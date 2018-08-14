@@ -27,6 +27,7 @@
  - [Autoprefixer Configuration](stories/autoprefixer)
  - [Deploy to GitHub Pages](stories/github-pages)
  - [Create a Library](stories/create-library)
+ - [Linked Library](stories/linked-library)
  - [Multiple projects](stories/multiple-projects)
  - [Continuous Integration](stories/continuous-integration)
  - [Universal Rendering](stories/universal-rendering)
