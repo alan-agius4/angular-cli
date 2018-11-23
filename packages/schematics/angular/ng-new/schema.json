@@ -6,11 +6,13 @@
   "properties": {
     "directory": {
       "type": "string",
+      "x-deprecated": true,
       "description": "The directory name to create the workspace in."
     },
     "name": {
       "description": "The name of the new workspace and initial project.",
       "type": "string",
+      "x-deprecated": "yo use",
       "format": "html-selector",
       "$default": {
         "$source": "argv",

@@ -9,13 +9,17 @@ const fs = require('fs');
 const path = require('path');
 const {
   InputData,
-  JSONSchema,
+  TypeAttributeKind,
   JSONSchemaInput,
   JSONSchemaStore,
   TypeScriptTargetLanguage,
   parseJSON,
   quicktype,
 } = require('quicktype-core');
+
+const {
+  addDescriptionToSchema,
+} = require('quicktype-core/dist/Description')
 
 /**
  * This file is pure JavaScript because Bazel only support compiling to ES5, while quicktype is
@@ -102,7 +106,6 @@ async function main(inPath, outPath) {
   const content = await generate(inPath);
 
   if (outPath === '-') {
-    console.log(content);
     process.exit(0);
   }
 
@@ -111,19 +114,52 @@ async function main(inPath, outPath) {
   fs.writeFileSync(outPath, content, 'utf-8');
 }
 
+function xDeprecatedProducer(
+  schema,
+  canonicalRef,
+  _types
+) {
+  const deprecated = schema["x-deprecated"];
+  if (!deprecated) {
+    return undefined;
+  }
+
+  let description = schema.description || '';
+  description += '\n@deprecated' + (typeof deprecated === 'string' ? ' ' + deprecated : '');
+  schema.description = description;
+
+  return schema;
+}
+
+class DescriptionTypeAttributeKind extends TypeAttributeKind {
+  constructor() {
+    super("description");
+  }
+  combine(attrs) {
+    return attrs;
+  }
+  makeInferred(_) {
+    return undefined;
+  }
+  addToSchema(schema, _t, attrs) {
+    console.log(schema.description);
+    schema.description = Array.from(attrs).join("\n");
+  }
+}
+
+
+// const descriptionTypeAttributeKind = new DescriptionTypeAttributeKind();
 
 async function generate(inPath) {
   // Best description of how to use the API was found at
   //   https://blog.quicktype.io/customizing-quicktype/
   const inputData = new InputData();
   const source = { name: 'Schema', schema: fs.readFileSync(inPath, 'utf-8') };
-
   await inputData.addSource('schema', source, () => {
-    return new JSONSchemaInput(new FetchingJSONSchemaStore(inPath));
+    return new JSONSchemaInput(new FetchingJSONSchemaStore(inPath), [xDeprecatedProducer]);
   });
 
   const lang = new TypeScriptTargetLanguage();
-
   const { lines } = await quicktype({
     lang,
     inputData,
