@@ -128,7 +128,7 @@ export function useBuiltPackages() {
         ) {
           json['dependencies'][packageName] = packages[packageName].tar;
         } else if (json['devDependencies'].hasOwnProperty(packageName)) {
-          json['devDependencies'][packageName] = packages[packageName].tar;
+          json['devDependencies'][packageName] = 'file:' + packages[packageName].tar;
         }
       }
     }));

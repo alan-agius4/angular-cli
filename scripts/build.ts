@@ -381,7 +381,7 @@ export default async function(
         }
         if (obj && typeof obj === 'object' && obj[depName]) {
           if (argv.local) {
-            obj[depName] = packages[depName].tar;
+            obj[depName] = 'file:' + packages[depName].tar;
           } else if (argv.snapshot) {
             const pkg = packages[depName];
             if (!pkg.snapshotRepo) {
