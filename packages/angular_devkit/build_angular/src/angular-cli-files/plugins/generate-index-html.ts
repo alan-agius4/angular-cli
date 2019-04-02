@@ -15,8 +15,11 @@ import {
 
 const parse5 = require('parse5');
 
+export type LoadOutputFileFunctionType = (file: string) => Promise<string>;
 
-export type LoadOutputFileFunctionType = (file: string) => string;
+export interface EntryInfo {
+  name: string;
+}
 
 export interface GenerateIndexHtmlParams {
   // input file name (e. g. index.html)
@@ -27,7 +30,9 @@ export interface GenerateIndexHtmlParams {
   deployUrl?: string;
   sri: boolean;
   // the files emitted by the build
-  unfilteredSortedFiles: CompiledFileInfo[];
+  unfilteredUnsortedFiles: CompiledFileInfo[];
+  // list with entry points in the order we need to reference their bundles
+  entries: string[];
   // additional files that should be added using nomodule
   noModuleFiles: Set<string>;
   // function that loads a file
@@ -47,6 +52,30 @@ export type CompiledFileType = 'nomodule' | 'module' | 'none';
 export interface CompiledFileInfo {
   file: string;
   type: CompiledFileType;
+
+  // the webpack entry point of this file is needed for sorting
+  entry: string;
+}
+
+// sorts the past unsortedFiles according to its entry points
+export function sortFilesByEntryPoints(
+  unsortedFiles: CompiledFileInfo[],
+  sortedEntryPoints: string[]): CompiledFileInfo[] {
+
+  const entryToFilesMap = new Map<string, CompiledFileInfo[]>();
+  const result: CompiledFileInfo[] = [];
+
+  unsortedFiles.forEach(file => {
+    const files = entryToFilesMap.get(file.entry) || [];
+    entryToFilesMap.set(file.entry, [...files, file]);
+  });
+
+  sortedEntryPoints.forEach(entry => {
+    const files = entryToFilesMap.get(entry) || [];
+    result.push(...files);
+  });
+
+  return result;
 }
 
 /*
@@ -55,7 +84,7 @@ export interface CompiledFileInfo {
  * after processing several configurations in order to build different sets of
  * bundles for differential serving.
  */
-export function generateIndexHtml(params: GenerateIndexHtmlParams): Source {
+export async function generateIndexHtml(params: GenerateIndexHtmlParams): Promise<Source> {
 
   const loadOutputFile = params.loadOutputFile;
 
@@ -64,18 +93,33 @@ export function generateIndexHtml(params: GenerateIndexHtmlParams): Source {
   const stylesheets: string[] = [];
   const scripts: string[] = [];
 
-  const fileNames = params.unfilteredSortedFiles.map(f => f.file);
-  const moduleFilesArray =  params.unfilteredSortedFiles
+  // bring files in the right order, e. g. put polyfills first
+  const unfilteredSortedFiles = sortFilesByEntryPoints(
+    params.unfilteredUnsortedFiles,
+    params.entries);
+
+  const moduleFilesArray = unfilteredSortedFiles
     .filter(f => f.type === 'module')
     .map(f => f.file);
 
   const moduleFiles = new Set<string>(moduleFilesArray);
 
-  const noModuleFilesArray = params.unfilteredSortedFiles
+  const noModuleFilesArray = unfilteredSortedFiles
     .filter(f => f.type === 'nomodule')
     .map(f => f.file);
 
-  noModuleFilesArray.push(...params.noModuleFiles);
+  // this is for files that are configured to get the nomodule
+  // attribute too, like polyfills.es5
+  // When not using differential loading it's part of the
+  // none files below and it needs to keep its position
+  // within the none-files (below runtime.js).
+  const configuredNoModuleFiles = params.noModuleFiles;
+
+  const noneFilesArray = unfilteredSortedFiles
+    .filter(f => f.type === 'none')
+    .map(f => f.file);
+
+  const fileNames = [...moduleFilesArray, ...noModuleFilesArray, ...noneFilesArray];
 
   const noModuleFiles = new Set<string>(noModuleFilesArray);
 
@@ -143,7 +187,7 @@ export function generateIndexHtml(params: GenerateIndexHtmlParams): Source {
       { name: 'src', value: (params.deployUrl || '') + script },
     ];
 
-    if (noModuleFiles.has(script)) {
+    if (noModuleFiles.has(script) || configuredNoModuleFiles.has(script)) {
       attrs.push({ name: 'nomodule', value: null });
     }
 
@@ -152,7 +196,7 @@ export function generateIndexHtml(params: GenerateIndexHtmlParams): Source {
     }
 
     if (params.sri) {
-      const content = loadOutputFile(script);
+      const content = await loadOutputFile(script);
       attrs.push(..._generateSriAttributes(content));
     }
 
@@ -222,7 +266,7 @@ export function generateIndexHtml(params: GenerateIndexHtmlParams): Source {
     ];
 
     if (params.sri) {
-      const content = loadOutputFile(stylesheet);
+      const content = await loadOutputFile(stylesheet);
       attrs.push(..._generateSriAttributes(content));
     }
 

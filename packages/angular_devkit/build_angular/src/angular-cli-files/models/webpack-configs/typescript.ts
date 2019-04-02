@@ -78,6 +78,15 @@ function _createAotPlugin(
     importFactories: buildOptions.experimentalImportFactories,
     ...options,
   };
+
+  if (!pluginOptions.compilerOptions) {
+    pluginOptions.compilerOptions = {};
+  }
+
+  if (wco.buildOptions.scriptTargetOverride) {
+    pluginOptions.compilerOptions.target = wco.buildOptions.scriptTargetOverride;
+  }
+
   return new AngularCompilerPlugin(pluginOptions);
 }
 

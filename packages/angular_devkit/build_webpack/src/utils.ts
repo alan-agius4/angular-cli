@@ -11,7 +11,6 @@ import * as webpack from 'webpack';
 export interface EmittedFiles {
   name?: string;
   file: string;
-  initial: boolean;
   extension: string;
 }
 
@@ -19,14 +18,16 @@ export function getEmittedFiles(compilation: webpack.compilation.Compilation): E
   const getExtension = (file: string) => file.split('.').reverse()[0];
   const files: EmittedFiles[] = [];
 
-  for (const chunk of Object.values(compilation.chunks)) {
-    const entry: Partial<EmittedFiles> = {
-      name: chunk.name,
-      initial: chunk.isOnlyInitial(),
-    };
-
-    for (const file of chunk.files) {
-      files.push({ ...entry, file, extension: getExtension(file) } as EmittedFiles);
+  for (const key of compilation.entrypoints.keys()) {
+    const entrypoint = compilation.entrypoints.get(key);
+    if (entrypoint && entrypoint.getFiles) {
+      for (const file of entrypoint.getFiles()) {
+        files.push({
+          name: key as string,
+          file,
+          extension: getExtension(file),
+        });
+      }
     }
   }
 
@@ -39,7 +40,6 @@ export function getEmittedFiles(compilation: webpack.compilation.Compilation): E
     files.push({
       file,
       extension: getExtension(file),
-      initial: false,
     });
   }
 

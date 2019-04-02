@@ -75,6 +75,13 @@ export interface BuildOptions {
   fileReplacements: NormalizedFileReplacement[];
     /** @deprecated use only for compatibility in 8.x; will be removed in 9.0 */
   rebaseRootRelativeCssUrls?: boolean;
+
+  // Append target version to filename?
+  esVersionInFileName?: boolean;
+
+  // If specified, this defines which target version shall be used instead
+  // of the one in tsconfig.json
+  scriptTargetOverride?: ts.ScriptTarget;
 }
 
 export interface WebpackTestOptions extends BuildOptions {

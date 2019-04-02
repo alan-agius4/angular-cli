@@ -21,8 +21,8 @@ import { CleanCssWebpackPlugin } from '../../plugins/cleancss-webpack-plugin';
 import { ScriptsWebpackPlugin } from '../../plugins/scripts-webpack-plugin';
 import { findAllNodeModules, findUp } from '../../utilities/find-up';
 import { requireProjectModule } from '../../utilities/require-project-module';
-import { BuildOptions, WebpackConfigOptions } from '../build-options';
-import { getOutputHashFormat, normalizeExtraEntryPoints } from './utils';
+import { WebpackConfigOptions } from '../build-options';
+import { getEsVersionForFileName, getOutputHashFormat, normalizeExtraEntryPoints } from './utils';
 
 const ProgressPlugin = require('webpack/lib/ProgressPlugin');
 const CircularDependencyPlugin = require('circular-dependency-plugin');
@@ -55,6 +55,12 @@ export function getCommonConfig(wco: WebpackConfigOptions): Configuration {
   const extraPlugins: any[] = [];
   const entryPoints: { [key: string]: string[] } = {};
 
+  const targetInFileName  = getEsVersionForFileName({
+    scriptTargetOverride: wco.buildOptions.scriptTargetOverride,
+    esVersionInFileName: wco.buildOptions.esVersionInFileName || false,
+  });
+
+
   if (buildOptions.main) {
     entryPoints['main'] = [path.resolve(root, buildOptions.main)];
   }
@@ -83,7 +89,7 @@ export function getCommonConfig(wco: WebpackConfigOptions): Configuration {
 
   if (buildOptions.profile || process.env['NG_BUILD_PROFILING']) {
     extraPlugins.push(new debug.ProfilingPlugin({
-      outputPath: path.resolve(root, 'chrome-profiler-events.json'),
+      outputPath: path.resolve(root, `chrome-profiler-events${targetInFileName}.json`),
     }));
   }
 
@@ -177,7 +183,7 @@ export function getCommonConfig(wco: WebpackConfigOptions): Configuration {
   }
 
   if (buildOptions.statsJson) {
-    extraPlugins.push(new StatsPlugin('stats.json', 'verbose'));
+    extraPlugins.push(new StatsPlugin(`stats${targetInFileName}.json`, 'verbose'));
   }
 
   let sourceMapUseRule;
@@ -305,7 +311,7 @@ export function getCommonConfig(wco: WebpackConfigOptions): Configuration {
       futureEmitAssets: true,
       path: path.resolve(root, buildOptions.outputPath as string),
       publicPath: buildOptions.deployUrl,
-      filename: `[name]${hashFormat.chunk}.js`,
+      filename: `[name]${targetInFileName}${hashFormat.chunk}.js`,
       // cast required until typings include `futureEmitAssets` property
     } as Output,
     watch: buildOptions.watch,

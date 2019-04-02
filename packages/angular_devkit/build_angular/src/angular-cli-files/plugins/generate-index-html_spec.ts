@@ -5,23 +5,24 @@
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
-import { generateIndexHtml } from './generate-index-html';
+import { CompiledFileType, generateIndexHtml } from './generate-index-html';
 
-describe('index-html-webpack-plugin', () => {
+describe('generateIndexHtml', () => {
 
-  it('can generate index.html', () => {
+  it('can generate an index.html with module, and nomodule bundles', async () => {
 
-    const source = generateIndexHtml({
+    const source = await generateIndexHtml({
       input: 'index.html',
       inputContent: '<html><head></head><body></body></html>',
       baseHref: '/',
       sri: false,
-      loadOutputFile: (fileName: string) => '',
-      unfilteredSortedFiles: [
-        {file: 'a.js', type: 'module'},
-        {file: 'b.js', type: 'nomodule'},
-        {file: 'c.js', type: 'none'},
+      loadOutputFile: (fileName: string) => Promise.resolve(''),
+      unfilteredUnsortedFiles: [
+        {file: 'a.js', type: 'module' as CompiledFileType, entry: 'a'},
+        {file: 'b.js', type: 'nomodule' as CompiledFileType, entry: 'b'},
+        {file: 'c.js', type: 'none' as CompiledFileType, entry: 'c'},
       ],
+      entries: ['a', 'b', 'c'],
       noModuleFiles: new Set<string>(),
     });
 

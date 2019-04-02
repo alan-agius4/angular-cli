@@ -23,3 +23,5 @@ export {
   logging,
   terminal,
 };
+
+export const ENABLE_DIFFERENTIAL_LOADING = false;
