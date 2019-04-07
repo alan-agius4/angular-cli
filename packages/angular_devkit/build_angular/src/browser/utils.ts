@@ -14,7 +14,7 @@ import * as ts from 'typescript';
 
 export function isDifferentialLoadingNeeded(
   projectRoot: Path,
-  target: ts.ScriptTarget): boolean {
+  target: ts.ScriptTarget = ts.ScriptTarget.ES5): boolean {
 
   const supportES2015 = target !== ts.ScriptTarget.ES3 && target !== ts.ScriptTarget.ES5;
 

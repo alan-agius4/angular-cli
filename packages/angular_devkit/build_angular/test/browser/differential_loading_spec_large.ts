@@ -7,11 +7,11 @@
  */
 
 import { Architect } from '@angular-devkit/architect/src/index';
-import { ENABLE_DIFFERENTIAL_LOADING, normalize, virtualFs } from '@angular-devkit/core';
+import { normalize, virtualFs } from '@angular-devkit/core';
 import { browserBuild, createArchitect, host } from '../utils';
 
 // This feature is currently hidden behind a flag
-describe('Browser Builder with differential loading', () => {
+xdescribe('Browser Builder with differential loading', () => {
   const target = { project: 'app', target: 'build' };
   let architect: Architect;
 
@@ -25,11 +25,6 @@ describe('Browser Builder with differential loading', () => {
   });
 
   it('works', async () => {
-
-    if (!ENABLE_DIFFERENTIAL_LOADING) {
-      return;
-    }
-
     host.replaceInFile(
       'tsconfig.json',
       '"target": "es5"',
@@ -54,11 +49,6 @@ describe('Browser Builder with differential loading', () => {
   });
 
   it('emits the right es formats', async () => {
-
-    if (!ENABLE_DIFFERENTIAL_LOADING) {
-      return;
-    }
-
     host.replaceInFile(
       'tsconfig.json',
       '"target": "es5"',

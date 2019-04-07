@@ -18,7 +18,6 @@ import {
   runWebpack,
 } from '@angular-devkit/build-webpack';
 import {
-  ENABLE_DIFFERENTIAL_LOADING,
   Path,
   analytics,
   basename,
@@ -132,15 +131,16 @@ export function buildWebpackConfig(
     ? additionalOptions.logger.createChild('webpackConfigOptions')
     : new logging.NullLogger();
 
-  const differentialLoading = isDifferentialLoadingNeeded(
-    projectRoot, target || projectTs.ScriptTarget.ES5) && ENABLE_DIFFERENTIAL_LOADING;
+  // todo enabe when differential loading is complete
+  // const differentialLoading = isDifferentialLoadingNeeded(projectRoot, target);
+  const differentialLoading = false;
 
   const targets = differentialLoading ? [projectTs.ScriptTarget.ES5, target] : [target];
 
   // For differential loading, we can have several targets
   return targets.map(target => {
 
-    let buildOptions: NormalizedBrowserBuilderSchema;
+    let buildOptions: NormalizedBrowserBuilderSchema = { ...options };
 
     const supportES2015 = target !== projectTs.ScriptTarget.ES3
       && target !== projectTs.ScriptTarget.ES5;
@@ -155,18 +155,20 @@ export function buildWebpackConfig(
         esVersionInFileName: true,
         scriptTargetOverride: target,
       };
-    } else {
-      // According to the differential loading design docs, the es5BrowserSupport
-      // command line option will be deprecated and shall be inferred using the browserslist.
-      // To support it while it's deprecated, we are just falling back to the inferred value.
+    } 
+    // todo: manfred can you explain the below this?
 
-      if (ENABLE_DIFFERENTIAL_LOADING) {
-        const es5BrowserSupport = options.es5BrowserSupport || isEs5SupportNeeded(projectRoot);
-        buildOptions = { ...options, es5BrowserSupport };
-      } else {
-        buildOptions = { ...options };
-      }
-    }
+    // else {
+    //   // According to the differential loading design docs, the es5BrowserSupport
+    //   // command line option will be deprecated and shall be inferred using the browserslist.
+    //   // To support it while it's deprecated, we are just falling back to the inferred value.
+    //   if (ENABLE_DIFFERENTIAL_LOADING) {
+    //     const es5BrowserSupport = options.es5BrowserSupport || isEs5SupportNeeded(projectRoot);
+    //     buildOptions = { ...options, es5BrowserSupport };
+    //   } else {
+    //     buildOptions = { ...options };
+    //   }
+    // }
 
     wco = {
       root: getSystemPath(root),

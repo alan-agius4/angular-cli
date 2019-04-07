@@ -12,9 +12,7 @@ import * as path from 'path';
 import { basename, normalize } from '@angular-devkit/core';
 import { ExtraEntryPoint, ExtraEntryPointClass } from '../../../browser/schema';
 import { SourceMapDevToolPlugin } from 'webpack';
-import { WebpackConfigOptions } from '../build-options';
-import * as ts from './common';
-import * as typescript from 'typescript';
+import * as ts from 'typescript';
 
 export const ngAppResolve = (resolvePath: string): string => {
   return path.resolve(process.cwd(), resolvePath);
@@ -95,10 +93,10 @@ export function getSourceMapDevTool(
 
 export function getEsVersionForFileName(
   params: {
-    scriptTargetOverride: typescript.ScriptTarget | undefined,
+    scriptTargetOverride: ts.ScriptTarget | undefined,
     esVersionInFileName: boolean,
   }): string {
 
   return params.scriptTargetOverride && params.esVersionInFileName ?
-    '-' + typescript.ScriptTarget[params.scriptTargetOverride].toLowerCase() : '';
+    '-' + ts.ScriptTarget[params.scriptTargetOverride].toLowerCase() : '';
 }

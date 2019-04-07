@@ -25,10 +25,9 @@ const host = new TestProjectHost(normalize(workspaceRoot));
 describe('differential loading', () => {
 
   beforeEach(async () => host.initialize().toPromise());
-  // afterEach(async () => host.restore().toPromise());
+  afterEach(async () => host.restore().toPromise());
 
   it('detects the need for differential loading for IE 9-11 and ES2015', () => {
-
     host.writeMultipleFiles({
       'browserslist': 'IE 9-11',
     });
@@ -38,7 +37,6 @@ describe('differential loading', () => {
   });
 
   it('detects no need for differential loading for Chrome and ES2015', () => {
-
     host.writeMultipleFiles({
       'browserslist': 'last 1 chrome version',
     });
@@ -49,7 +47,6 @@ describe('differential loading', () => {
   });
 
   it('detects no need for differential loading for target is ES5', () => {
-
     host.writeMultipleFiles({
       'browserslist': 'last 1 chrome version',
     });
