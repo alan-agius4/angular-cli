@@ -155,7 +155,7 @@ export function buildWebpackConfig(
         esVersionInFileName: true,
         scriptTargetOverride: target,
       };
-    } 
+    }
     // todo: manfred can you explain the below this?
 
     // else {
@@ -352,7 +352,7 @@ async function writeIndexHtml(
 
       return virtualFs.fileBufferToString(buffer);
     },
-    entries: generateEntryPoints(entryOptions),
+    entryPoints: generateEntryPoints(entryOptions),
     unfilteredUnsortedFiles: [
       ...unsortedFiles1,
       ...unsortedFiles2,

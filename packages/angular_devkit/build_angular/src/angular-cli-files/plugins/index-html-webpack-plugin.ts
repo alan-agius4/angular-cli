@@ -95,7 +95,7 @@ export class IndexHtmlWebpackPlugin {
       const indexSource = await generateIndexHtml({
         input: this._options.input,
         inputContent,
-        entries: this._options.entrypoints,
+        entryPoints: this._options.entrypoints,
         baseHref: this._options.baseHref,
         deployUrl: this._options.deployUrl,
         sri: this._options.sri,

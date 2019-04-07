@@ -22,7 +22,7 @@ describe('generateIndexHtml', () => {
         {file: 'b.js', type: 'nomodule' as CompiledFileType, entry: 'b'},
         {file: 'c.js', type: 'none' as CompiledFileType, entry: 'c'},
       ],
-      entries: ['a', 'b', 'c'],
+      entryPoints: ['a', 'b', 'c'],
       noModuleFiles: new Set<string>(),
     });
 

@@ -17,10 +17,6 @@ const parse5 = require('parse5');
 
 export type LoadOutputFileFunctionType = (file: string) => Promise<string>;
 
-export interface EntryInfo {
-  name: string;
-}
-
 export interface GenerateIndexHtmlParams {
   // input file name (e. g. index.html)
   input: string;
@@ -32,7 +28,7 @@ export interface GenerateIndexHtmlParams {
   // the files emitted by the build
   unfilteredUnsortedFiles: CompiledFileInfo[];
   // list with entry points in the order we need to reference their bundles
-  entries: string[];
+  entryPoints: string[];
   // additional files that should be added using nomodule
   noModuleFiles: Set<string>;
   // function that loads a file
@@ -96,7 +92,7 @@ export async function generateIndexHtml(params: GenerateIndexHtmlParams): Promis
   // bring files in the right order, e. g. put polyfills first
   const unfilteredSortedFiles = sortFilesByEntryPoints(
     params.unfilteredUnsortedFiles,
-    params.entries);
+    params.entryPoints);
 
   const moduleFilesArray = unfilteredSortedFiles
     .filter(f => f.type === 'module')
