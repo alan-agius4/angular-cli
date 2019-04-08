@@ -91,12 +91,13 @@ export function getSourceMapDevTool(
   });
 }
 
+/**
+ * Returns an ES version file suffix to differentiate between various builds.
+ */
 export function getEsVersionForFileName(
-  params: {
-    scriptTargetOverride: ts.ScriptTarget | undefined,
-    esVersionInFileName: boolean,
-  }): string {
-
-  return params.scriptTargetOverride && params.esVersionInFileName ?
-    '-' + ts.ScriptTarget[params.scriptTargetOverride].toLowerCase() : '';
+  scriptTargetOverride: ts.ScriptTarget | undefined,
+  esVersionInFileName = false,
+): string {
+  return scriptTargetOverride && esVersionInFileName ?
+    '-' + ts.ScriptTarget[scriptTargetOverride].toLowerCase() : '';
 }

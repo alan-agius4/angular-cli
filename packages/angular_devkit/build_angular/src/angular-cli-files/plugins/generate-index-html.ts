@@ -30,7 +30,7 @@ export interface GenerateIndexHtmlParams {
   // list with entry points in the order we need to reference their bundles
   entryPoints: string[];
   // additional files that should be added using nomodule
-  noModuleFiles: Set<string>;
+  noModuleFiles?: Set<string>;
   // function that loads a file
   // This allows us to use different routines within the IndexHtmlWebpackPlugin and
   // when used without this plugin.
@@ -104,13 +104,6 @@ export async function generateIndexHtml(params: GenerateIndexHtmlParams): Promis
     .filter(f => f.type === 'nomodule')
     .map(f => f.file);
 
-  // this is for files that are configured to get the nomodule
-  // attribute too, like polyfills.es5
-  // When not using differential loading it's part of the
-  // none files below and it needs to keep its position
-  // within the none-files (below runtime.js).
-  const configuredNoModuleFiles = params.noModuleFiles;
-
   const noneFilesArray = unfilteredSortedFiles
     .filter(f => f.type === 'none')
     .map(f => f.file);
@@ -177,13 +170,21 @@ export async function generateIndexHtml(params: GenerateIndexHtmlParams): Promis
   // Inject into the html
   const indexSource = new ReplaceSource(new RawSource(params.inputContent), params.input);
 
+  // this is for files that are configured to get the nomodule
+  // attribute too, like polyfills.es5
+  // When not using differential loading it's part of the
+  // none files below and it needs to keep its position
+  // within the none-files (below runtime.js).
+  const configuredNoModuleFiles = params.noModuleFiles;
   let scriptElements = '';
   for (const script of scripts) {
     const attrs: { name: string, value: string | null }[] = [
       { name: 'src', value: (params.deployUrl || '') + script },
     ];
 
-    if (noModuleFiles.has(script) || configuredNoModuleFiles.has(script)) {
+    if (noModuleFiles.has(script) || (
+      configuredNoModuleFiles && configuredNoModuleFiles.has(script)
+    )) {
       attrs.push({ name: 'nomodule', value: null });
     }
 

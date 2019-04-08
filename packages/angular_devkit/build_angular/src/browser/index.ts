@@ -55,7 +55,6 @@ import {
 } from '../angular-cli-files/plugins/generate-index-html';
 import { generateEntryPoints } from '../angular-cli-files/utilities/package-chunk-sort';
 import { readTsconfig } from '../angular-cli-files/utilities/read-tsconfig';
-import { requireProjectModule } from '../angular-cli-files/utilities/require-project-module';
 import { augmentAppWithServiceWorker } from '../angular-cli-files/utilities/service-worker';
 import {
   statsErrorsToString,
@@ -69,7 +68,7 @@ import {
   normalizeBrowserSchema,
 } from '../utils';
 import { Schema as BrowserBuilderSchema } from './schema';
-import { isDifferentialLoadingNeeded, isEs5SupportNeeded } from './utils';
+import { isDifferentialLoadingNeeded } from './utils';
 
 
 const SpeedMeasurePlugin = require('speed-measure-webpack-plugin');
@@ -122,53 +121,34 @@ export function buildWebpackConfig(
   const tsConfigPath = getSystemPath(normalize(resolve(root, normalize(options.tsConfig))));
   const tsConfig = readTsconfig(tsConfigPath);
 
-  const projectTs = requireProjectModule(
-    getSystemPath(projectRoot), 'typescript') as typeof ts;
-
-  const target = tsConfig.options.target;
-
   const logger = additionalOptions.logger
     ? additionalOptions.logger.createChild('webpackConfigOptions')
     : new logging.NullLogger();
 
+  const scriptTarget = tsConfig.options.target;
   // todo enabe when differential loading is complete
-  // const differentialLoading = isDifferentialLoadingNeeded(projectRoot, target);
+  // const differentialLoading = isDifferentialLoadingNeeded(projectRoot, scriptTarget);
   const differentialLoading = false;
 
-  const targets = differentialLoading ? [projectTs.ScriptTarget.ES5, target] : [target];
+  const scriptTargets = differentialLoading ? [ts.ScriptTarget.ES5, scriptTarget] : [scriptTarget];
 
   // For differential loading, we can have several targets
-  return targets.map(target => {
-
+  return scriptTargets.map(scriptTarget => {
     let buildOptions: NormalizedBrowserBuilderSchema = { ...options };
-
-    const supportES2015 = target !== projectTs.ScriptTarget.ES3
-      && target !== projectTs.ScriptTarget.ES5;
-
     if (differentialLoading) {
       // For differential loading, the builder needs to created the index.html by itself
       // without using a webpack plugin.
       buildOptions = {
         ...options,
-        es5BrowserSupport: !supportES2015,
+        es5BrowserSupport: undefined,
         index: '',
         esVersionInFileName: true,
-        scriptTargetOverride: target,
+        scriptTargetOverride: scriptTarget,
       };
     }
-    // todo: manfred can you explain the below this?
 
-    // else {
-    //   // According to the differential loading design docs, the es5BrowserSupport
-    //   // command line option will be deprecated and shall be inferred using the browserslist.
-    //   // To support it while it's deprecated, we are just falling back to the inferred value.
-    //   if (ENABLE_DIFFERENTIAL_LOADING) {
-    //     const es5BrowserSupport = options.es5BrowserSupport || isEs5SupportNeeded(projectRoot);
-    //     buildOptions = { ...options, es5BrowserSupport };
-    //   } else {
-    //     buildOptions = { ...options };
-    //   }
-    // }
+    const supportES2015
+      = scriptTarget !== ts.ScriptTarget.ES3 && scriptTarget !== ts.ScriptTarget.ES5;
 
     wco = {
       root: getSystemPath(root),
@@ -218,11 +198,10 @@ export function buildWebpackConfig(
     const webpackConfig = webpackMerge(webpackConfigs);
 
     if (options.profile || process.env['NG_BUILD_PROFILING']) {
-
-      const esVersionInFileName = getEsVersionForFileName({
-        scriptTargetOverride: wco.buildOptions.scriptTargetOverride,
-        esVersionInFileName: wco.buildOptions.esVersionInFileName || false,
-      });
+      const esVersionInFileName = getEsVersionForFileName(
+        wco.buildOptions.scriptTargetOverride,
+        wco.buildOptions.esVersionInFileName,
+      );
 
       const smp = new SpeedMeasurePlugin({
         outputFormat: 'json',
@@ -234,7 +213,6 @@ export function buildWebpackConfig(
     }
 
     return webpackConfig;
-
   });
 }
 
@@ -320,21 +298,22 @@ async function writeIndexHtml(
   const indexBuffer = await host.read(indexFileName).toPromise();
   const indexContent = virtualFs.fileBufferToString(indexBuffer);
 
-  const emit1 = buildEvents[0].emittedFiles || [];
-  const emit2 = buildEvents[1].emittedFiles || [];
+  let unfilteredUnsortedFiles: CompiledFileInfo[] = [];
+  for (const buildEvent of buildEvents) {
+    if (!buildEvent.emittedFiles) {
+      continue;
+    }
 
+    const files: CompiledFileInfo[] = buildEvent.emittedFiles
+      .filter(f => f.name)
+      .map(f => ({
+        file: f.file,
+        type: (f.extension === 'js' ? 'nomodule' : 'none') as CompiledFileType,
+        entry: f.name as string,
+      }));
 
-  const unsortedFiles1: CompiledFileInfo[] = emit1.map(f => ({
-    file: f.file,
-    type: f.extension === 'js' ? 'nomodule' as CompiledFileType : 'none' as CompiledFileType,
-    entry: f.name || '',
-  }));
-
-  const unsortedFiles2: CompiledFileInfo[] = emit2.map(f => ({
-    file: f.file,
-    type: f.extension === 'js' ? 'module' as CompiledFileType : 'none' as CompiledFileType,
-    entry: f.name || '',
-  }));
+    unfilteredUnsortedFiles = [...unfilteredUnsortedFiles, ...files];
+  }
 
   const entryOptions = {
     scripts: options.scripts || [],
@@ -353,11 +332,7 @@ async function writeIndexHtml(
       return virtualFs.fileBufferToString(buffer);
     },
     entryPoints: generateEntryPoints(entryOptions),
-    unfilteredUnsortedFiles: [
-      ...unsortedFiles1,
-      ...unsortedFiles2,
-    ],
-    noModuleFiles: new Set<string>(),
+    unfilteredUnsortedFiles: unfilteredUnsortedFiles,
   });
 
   await host.write(outputFileName, virtualFs.stringToFileBuffer(source.source())).toPromise();
@@ -418,23 +393,21 @@ export function buildWebpackBrowser(
       );
 
       return combineLatest(
-        configs.map((config, idx) => runWebpack(config, context, { logging: loggingFn })),
+        configs.map(config => runWebpack(config, context, { logging: loggingFn })),
       )
       .pipe(
         switchMap(buildEvents => {
-
           if (buildEvents.length === 2) {
-
             // if we are doing differential loading, we need to write the index.html
             // console.debug('writing index.html', buildEvent);
             return from(writeIndexHtml(buildEvents, options, root, host)).pipe(
-              map(_ => buildEvents),
+              map(() => buildEvents),
             );
           }
 
           return of(buildEvents);
         }),
-        map(buildEvents => ({success: buildEvents.every(r => r.success)})),
+        map(buildEvents => ({ success: buildEvents.every(r => r.success) })),
         concatMap(buildEvent => {
           if (buildEvent.success && !options.watch && options.serviceWorker) {
             return from(augmentAppWithServiceWorker(

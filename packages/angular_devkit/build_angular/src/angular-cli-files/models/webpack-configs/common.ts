@@ -8,6 +8,7 @@
 import { tags } from '@angular-devkit/core';
 import * as CopyWebpackPlugin from 'copy-webpack-plugin';
 import * as path from 'path';
+import * as ts from 'typescript';
 import {
   Configuration,
   ContextReplacementPlugin,
@@ -55,22 +56,36 @@ export function getCommonConfig(wco: WebpackConfigOptions): Configuration {
   const extraPlugins: any[] = [];
   const entryPoints: { [key: string]: string[] } = {};
 
-  const targetInFileName  = getEsVersionForFileName({
-    scriptTargetOverride: wco.buildOptions.scriptTargetOverride,
-    esVersionInFileName: wco.buildOptions.esVersionInFileName || false,
-  });
-
+  const targetInFileName  = getEsVersionForFileName(
+    buildOptions.scriptTargetOverride,
+    buildOptions.esVersionInFileName,
+  );
 
   if (buildOptions.main) {
     entryPoints['main'] = [path.resolve(root, buildOptions.main)];
   }
 
+  const es5Polyfills = path.join(__dirname, '..', 'es-polyfills.js');
   if (buildOptions.es5BrowserSupport) {
-    entryPoints['polyfills.es5'] = [path.join(__dirname, '..', 'es5-polyfills.js')];
+    entryPoints['polyfills.es5'] = [es5Polyfills];
+    if (!buildOptions.aot) {
+      entryPoints['polyfills.es5'].push(path.join(__dirname, '..', 'es5-jit-polyfills.js'));
+    }
+  }
+
+  if (buildOptions.es5BrowserSupport === undefined
+    && buildOptions.scriptTargetOverride === ts.ScriptTarget.ES5) {
+    entryPoints['polyfills'] = [es5Polyfills];
+    if (!buildOptions.aot) {
+      entryPoints['polyfills'].push(path.join(__dirname, '..', 'es5-jit-polyfills.js'));
+    }
   }
 
   if (buildOptions.polyfills) {
-    entryPoints['polyfills'] = [path.resolve(root, buildOptions.polyfills)];
+    entryPoints['polyfills'] = [
+      ...(entryPoints['polyfills'] || []),
+      path.resolve(root, buildOptions.polyfills),
+    ];
   }
 
   if (!buildOptions.aot) {
@@ -78,13 +93,6 @@ export function getCommonConfig(wco: WebpackConfigOptions): Configuration {
       ...(entryPoints['polyfills'] || []),
       path.join(__dirname, '..', 'jit-polyfills.js'),
     ];
-
-    if (buildOptions.es5BrowserSupport) {
-      entryPoints['polyfills.es5'] = [
-        ...entryPoints['polyfills.es5'],
-        path.join(__dirname, '..', 'es5-jit-polyfills.js'),
-      ];
-    }
   }
 
   if (buildOptions.profile || process.env['NG_BUILD_PROFILING']) {
@@ -110,7 +118,6 @@ export function getCommonConfig(wco: WebpackConfigOptions): Configuration {
           }
 
           existingEntry.paths.push(resolvedPath);
-
         } else {
           prev.push({
             bundleName,

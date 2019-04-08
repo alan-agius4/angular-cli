@@ -22,7 +22,6 @@ export function isDifferentialLoadingNeeded(
 }
 
 export function isEs5SupportNeeded(projectRoot: Path): boolean {
-
   const browsersList: string[] = browserslist(
     undefined, {
       path: getSystemPath(projectRoot),

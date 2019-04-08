@@ -7,7 +7,7 @@
  */
 
 import { Architect } from '@angular-devkit/architect/src/index';
-import { normalize, virtualFs } from '@angular-devkit/core';
+import { PathFragment } from '@angular-devkit/core';
 import { browserBuild, createArchitect, host } from '../utils';
 
 // This feature is currently hidden behind a flag
@@ -20,55 +20,61 @@ xdescribe('Browser Builder with differential loading', () => {
     architect = (await createArchitect(host.root())).architect;
   });
 
-  afterEach(async () => {
-    return host.restore().toPromise();
-  });
+  afterEach(async () => host.restore().toPromise());
 
-  it('works', async () => {
+  it('emits all the neccessary files', async () => {
     host.replaceInFile(
       'tsconfig.json',
       '"target": "es5"',
       '"target": "es2015"',
     );
 
-    await browserBuild(architect, host, target);
+    const { files } = await browserBuild(architect, host, target);
 
-    expect(await host.scopedSync().exists(normalize('dist/runtime-es5.js'))).toBe(true);
-    expect(await host.scopedSync().exists(normalize('dist/main-es5.js'))).toBe(true);
-    expect(await host.scopedSync().exists(normalize('dist/polyfills-es5.js'))).toBe(true);
-    expect(await host.scopedSync().exists(normalize('dist/styles-es5.js'))).toBe(true);
-    expect(await host.scopedSync().exists(normalize('dist/vendor-es5.js'))).toBe(true);
+    const expectedOutputs = [
+      'favicon.ico',
+      'index.html',
 
-    expect(await host.scopedSync().exists(normalize('dist/runtime-es2015.js'))).toBe(true);
-    expect(await host.scopedSync().exists(normalize('dist/main-es2015.js'))).toBe(true);
-    expect(await host.scopedSync().exists(normalize('dist/polyfills-es2015.js'))).toBe(true);
-    expect(await host.scopedSync().exists(normalize('dist/styles-es2015.js'))).toBe(true);
-    expect(await host.scopedSync().exists(normalize('dist/vendor-es2015.js'))).toBe(true);
+      'main-es2015.js',
+      'main-es2015.js.map',
+      'main-es5.js',
+      'main-es5.js.map',
 
-    expect(await host.scopedSync().exists(normalize('dist/favicon.ico'))).toBe(true);
+      'polyfills-es2015.js',
+      'polyfills-es2015.js.map',
+      'polyfills-es5.js',
+      'polyfills-es5.js.map',
+
+      'runtime-es2015.js',
+      'runtime-es2015.js.map',
+      'runtime-es5.js',
+      'runtime-es5.js.map',
+
+      'styles-es2015.js',
+      'styles-es2015.js.map',
+      'styles-es5.js',
+      'styles-es5.js.map',
+
+      'vendor-es2015.js',
+      'vendor-es2015.js.map',
+      'vendor-es5.js',
+      'vendor-es5.js.map',
+    ] as PathFragment[];
+
+    expect(Object.keys(files))
+      .toEqual(jasmine.arrayWithExactContents(expectedOutputs));
   });
 
-  it('emits the right es formats', async () => {
+  it('emits the right ES formats', async () => {
     host.replaceInFile(
       'tsconfig.json',
       '"target": "es5"',
       '"target": "es2015"',
     );
 
-    await browserBuild(architect, host, target, { optimization: true });
-
-    const mainEs5FileName = normalize('dist/main-es5.js');
-    const mainEs2015FileName = normalize('dist/main-es2015.js');
-
-    const contentEs5 =
-      virtualFs.fileBufferToString(host.scopedSync().read(mainEs5FileName));
-
-    const contentEs2015 =
-      virtualFs.fileBufferToString(host.scopedSync().read(mainEs2015FileName));
-
-    expect(contentEs5).not.toContain('class');
-    expect(contentEs2015).toContain('class');
-
+    const { files } = await browserBuild(architect, host, target, { optimization: true });
+    expect(await files['main-es5.js']).not.toContain('class');
+    expect(await files['main-es2015.js']).toContain('class');
   });
 
 });

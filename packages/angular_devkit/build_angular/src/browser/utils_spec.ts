@@ -8,18 +8,16 @@
 
 
 import { TestProjectHost } from '@angular-devkit/architect/testing';
-import { join, normalize } from '@angular-devkit/core';
+import { join } from '@angular-devkit/core';
 import { ScriptTarget } from 'typescript';
-import {
-  isDifferentialLoadingNeeded,
-} from './utils';
+import { isDifferentialLoadingNeeded } from './utils';
 
 const devkitRoot = (global as any)._DevKitRoot; // tslint:disable-line:no-any
 const workspaceRoot = join(
   devkitRoot,
   'tests/angular_devkit/build_angular/hello-world-app/');
 
-const host = new TestProjectHost(normalize(workspaceRoot));
+const host = new TestProjectHost(workspaceRoot);
 
 
 describe('differential loading', () => {
