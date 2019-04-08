@@ -56,7 +56,7 @@ export function getCommonConfig(wco: WebpackConfigOptions): Configuration {
   const extraPlugins: any[] = [];
   const entryPoints: { [key: string]: string[] } = {};
 
-  const targetInFileName  = getEsVersionForFileName(
+  const targetInFileName = getEsVersionForFileName(
     buildOptions.scriptTargetOverride,
     buildOptions.esVersionInFileName,
   );
