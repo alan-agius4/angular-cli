@@ -65,7 +65,7 @@ export function getCommonConfig(wco: WebpackConfigOptions): Configuration {
     entryPoints['main'] = [path.resolve(root, buildOptions.main)];
   }
 
-  const es5Polyfills = path.join(__dirname, '..', 'es-polyfills.js');
+  const es5Polyfills = path.join(__dirname, '..', 'es5-polyfills.js');
   if (buildOptions.es5BrowserSupport) {
     entryPoints['polyfills.es5'] = [es5Polyfills];
     if (!buildOptions.aot) {
