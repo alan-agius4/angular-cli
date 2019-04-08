@@ -32,9 +32,9 @@ import {
 } from '@angular-devkit/core';
 import { NodeJsSyncHost } from '@angular-devkit/core/node';
 import * as fs from 'fs';
-import { Observable, combineLatest, from, of, pipe } from 'rxjs';
-import { concatMap, map, switchMap, tap } from 'rxjs/operators';
-import * as ts from 'typescript'; // tslint:disable-line:no-implicit-dependencies
+import { Observable, combineLatest, from, of } from 'rxjs';
+import { concatMap, map, switchMap } from 'rxjs/operators';
+import * as ts from 'typescript';
 import webpack = require('webpack');
 import { NgBuildAnalyticsPlugin } from '../../plugins/webpack/analytics';
 import { WebpackConfigOptions } from '../angular-cli-files/models/build-options';
