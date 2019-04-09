@@ -16,37 +16,38 @@ import {
 const parse5 = require('parse5');
 
 
-export type LoadOutputFileFunctionType = (file: string) => string;
+export type LoadOutputFileFunctionType = (file: string) => Promise<string>;
 
-export interface GenerateIndexHtmlParams {
-  // input file name (e. g. index.html)
+export interface GenerateIndexHtmlOptions {
+  /* Input file name (e. g. index.html) */
   input: string;
-  // contents of input
+  /* Input contents */
   inputContent: string;
   baseHref?: string;
   deployUrl?: string;
   sri: boolean;
-  // the files emitted by the build
-  unfilteredSortedFiles: CompiledFileInfo[];
-  // additional files that should be added using nomodule
-  noModuleFiles: Set<string>;
-  // function that loads a file
-  // This allows us to use different routines within the IndexHtmlWebpackPlugin and
-  // when used without this plugin.
+  /*
+   * Files emitted by the build.
+   * Js files will be added without 'nomodule' nor 'module'.
+   */
+  files: FileInfo[];
+  /** Files that should be added using 'nomodule'. */
+  noModuleFiles?: FileInfo[];
+  /** Files that should be added using 'module'. */
+  moduleFiles?: FileInfo[];
+  /*
+   * Function that loads a file used.
+   * This allows us to use different routines within the IndexHtmlWebpackPlugin and
+   * when used without this plugin.
+   */
   loadOutputFile: LoadOutputFileFunctionType;
+  entrypoints: string[];
 }
 
-/*
- * Defines the type of script tag that is generated for the script reference
- * nomodule: <script src="..." nomodule></script>
- * module: <script src="..." type="module"></script>
- * none: <script src="..."></script>
- */
-export type CompiledFileType = 'nomodule' | 'module' | 'none';
-
-export interface CompiledFileInfo {
-  file: string;
-  type: CompiledFileType;
+export interface FileInfo {
+  fileName: string;
+  name: string;
+  extension: string;
 }
 
 /*
@@ -55,41 +56,31 @@ export interface CompiledFileInfo {
  * after processing several configurations in order to build different sets of
  * bundles for differential serving.
  */
-export function generateIndexHtml(params: GenerateIndexHtmlParams): Source {
+export async function generateIndexHtml(params: GenerateIndexHtmlOptions): Promise<Source> {
+  const {
+    loadOutputFile,
+    files: unfilteredSortedFiles,
+    noModuleFiles = [],
+    moduleFiles = [],
+    entrypoints,
+  } = params;
 
-  const loadOutputFile = params.loadOutputFile;
+  const stylesheets = new Set<string>();
+  const scripts = new Set<string>();
 
-  // Filter files
-  const existingFiles = new Set<string>();
-  const stylesheets: string[] = [];
-  const scripts: string[] = [];
-
-  const fileNames = params.unfilteredSortedFiles.map(f => f.file);
-  const moduleFilesArray =  params.unfilteredSortedFiles
-    .filter(f => f.type === 'module')
-    .map(f => f.file);
-
-  const moduleFiles = new Set<string>(moduleFilesArray);
-
-  const noModuleFilesArray = params.unfilteredSortedFiles
-    .filter(f => f.type === 'nomodule')
-    .map(f => f.file);
-
-  noModuleFilesArray.push(...params.noModuleFiles);
-
-  const noModuleFiles = new Set<string>(noModuleFilesArray);
-
-  for (const file of fileNames) {
-
-    if (existingFiles.has(file)) {
-      continue;
-    }
-    existingFiles.add(file);
-
-    if (file.endsWith('.js')) {
-      scripts.push(file);
-    } else if (file.endsWith('.css')) {
-      stylesheets.push(file);
+  // Sort files in the order we want to insert them by entrypoint and dedupes duplicates
+  const mergedFiles = [...noModuleFiles, ...moduleFiles, ...unfilteredSortedFiles];
+  for (const entrypoint of entrypoints) {
+    const files = mergedFiles.filter(x => x.name === entrypoint);
+    for (const { extension, fileName } of files) {
+      switch (extension) {
+        case '.js':
+          scripts.add(fileName);
+          break;
+        case '.css':
+          stylesheets.add(fileName);
+          break;
+      }
     }
   }
 
@@ -143,16 +134,16 @@ export function generateIndexHtml(params: GenerateIndexHtmlParams): Source {
       { name: 'src', value: (params.deployUrl || '') + script },
     ];
 
-    if (noModuleFiles.has(script)) {
+    if (noModuleFiles.some(x => x.fileName === script)) {
       attrs.push({ name: 'nomodule', value: null });
     }
 
-    if (moduleFiles.has(script)) {
+    if (moduleFiles.some(x => x.fileName === script)) {
       attrs.push({ name: 'type', value: 'module' });
     }
 
     if (params.sri) {
-      const content = loadOutputFile(script);
+      const content = await loadOutputFile(script);
       attrs.push(..._generateSriAttributes(content));
     }
 
@@ -222,7 +213,7 @@ export function generateIndexHtml(params: GenerateIndexHtmlParams): Source {
     ];
 
     if (params.sri) {
-      const content = loadOutputFile(stylesheet);
+      const content = await loadOutputFile(stylesheet);
       attrs.push(..._generateSriAttributes(content));
     }
 
