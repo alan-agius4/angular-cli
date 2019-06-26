@@ -48,8 +48,6 @@ describe('Browser Builder with differential loading', () => {
       'runtime-es5.js',
       'runtime-es5.js.map',
 
-      'styles-es2015.js',
-      'styles-es2015.js.map',
       'styles-es5.js',
       'styles-es5.js.map',
 
@@ -115,7 +113,7 @@ describe('Browser Builder with differential loading', () => {
     expect(await files['index.html']).toContain(
       '<script src="runtime.js" type="module"></script>' +
         '<script src="polyfills.js" type="module"></script>' +
-        '<script src="styles.js" type="module"></script>' +
+        '<script src="styles.js"></script>' +
         '<script src="vendor.js" type="module"></script>' +
         '<script src="main.js" type="module"></script>',
     );

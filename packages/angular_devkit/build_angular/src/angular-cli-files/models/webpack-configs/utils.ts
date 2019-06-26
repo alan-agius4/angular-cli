@@ -23,10 +23,20 @@ export interface HashFormat {
 export function getOutputHashFormat(option: string, length = 20): HashFormat {
   /* tslint:disable:max-line-length */
   const hashFormats: { [option: string]: HashFormat } = {
-    none:    { chunk: '',                       extract: '',                         file: ''                 , script: '' },
-    media:   { chunk: '',                       extract: '',                         file: `.[hash:${length}]`, script: ''  },
-    bundles: { chunk: `.[chunkhash:${length}]`, extract: `.[contenthash:${length}]`, file: ''                 , script: `.[hash:${length}]`  },
-    all:     { chunk: `.[chunkhash:${length}]`, extract: `.[contenthash:${length}]`, file: `.[hash:${length}]`, script: `.[hash:${length}]`  },
+    none: { chunk: '', extract: '', file: '', script: '' },
+    media: { chunk: '', extract: '', file: `.[hash:${length}]`, script: '' },
+    bundles: {
+      chunk: `.[chunkhash:${length}]`,
+      extract: `.[contenthash:${length}]`,
+      file: '',
+      script: `.[hash:${length}]`,
+    },
+    all: {
+      chunk: `.[chunkhash:${length}]`,
+      extract: `.[contenthash:${length}]`,
+      file: `.[hash:${length}]`,
+      script: `.[hash:${length}]`,
+    },
   };
   /* tslint:enable:max-line-length */
   return hashFormats[option] || hashFormats['none'];
@@ -36,7 +46,7 @@ export type NormalizedEntryPoint = ExtraEntryPointClass & { bundleName: string }
 
 export function normalizeExtraEntryPoints(
   extraEntryPoints: ExtraEntryPoint[],
-  defaultBundleName: string
+  defaultBundleName: string,
 ): NormalizedEntryPoint[] {
   return extraEntryPoints.map(entry => {
     let normalizedEntry;
@@ -57,11 +67,11 @@ export function normalizeExtraEntryPoints(
         bundleName = defaultBundleName;
       }
 
-      normalizedEntry = {...entry, bundleName};
+      normalizedEntry = { ...entry, bundleName };
     }
 
     return normalizedEntry;
-  })
+  });
 }
 
 export function getSourceMapDevTool(
@@ -93,10 +103,19 @@ export function getEsVersionForFileName(
   scriptTargetOverride: ScriptTarget | undefined,
   esVersionInFileName = false,
 ): string {
-  return scriptTargetOverride && esVersionInFileName ?
-    '-' + ScriptTarget[scriptTargetOverride].toLowerCase() : '';
+  return scriptTargetOverride && esVersionInFileName
+    ? '-' + ScriptTarget[scriptTargetOverride].toLowerCase()
+    : '';
 }
 
 export function isPolyfillsEntry(name: string) {
   return name === 'polyfills' || name === 'polyfills-es5';
+}
+
+export function getScriptsEntryPointNames(scripts: ExtraEntryPoint[] = []): string[] {
+  return [...new Set(normalizeExtraEntryPoints(scripts, 'scripts').map(x => x.bundleName))];
+}
+
+export function getStylesEntryPointNames(styles: ExtraEntryPoint[] = []): string[] {
+  return [...new Set(normalizeExtraEntryPoints(styles, 'styles').map(x => x.bundleName))];
 }

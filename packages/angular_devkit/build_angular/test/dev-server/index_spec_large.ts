@@ -31,7 +31,7 @@ describe('Dev Server Builder index', () => {
     expect(await response.text()).toContain(
       '<script src="runtime.js" type="module"></script>' +
         '<script src="polyfills.js" type="module"></script>' +
-        '<script src="styles.js" type="module"></script>' +
+        '<script src="styles.js"></script>' +
         '<script src="vendor.js" type="module"></script>' +
         '<script src="main.js" type="module"></script>',
     );

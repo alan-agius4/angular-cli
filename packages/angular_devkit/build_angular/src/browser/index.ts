@@ -37,8 +37,10 @@ import {
   getBrowserConfig,
   getCommonConfig,
   getNonAotConfig,
+  getScriptsEntryPointNames,
   getStatsConfig,
   getStylesConfig,
+  getStylesEntryPointNames,
   getWorkerConfig,
 } from '../angular-cli-files/models/webpack-configs';
 import {
@@ -231,18 +233,30 @@ export function buildWebpackBrowser(
             let noModuleFiles: EmittedFiles[] | undefined;
             let moduleFiles: EmittedFiles[] | undefined;
             let files: EmittedFiles[] | undefined;
-
+            const { scripts = [], styles = [] } = options;
             const [firstBuild, secondBuild] = buildEvents;
 
-            if (buildEvents.length === 2) {
-              noModuleFiles = firstBuild.emittedFiles;
-              moduleFiles = secondBuild.emittedFiles || [];
-              files = moduleFiles.filter(x => x.extension === '.css');
-            } else if (options.watch && isDifferentialLoadingNeeded) {
-              // differential loading is not enabled in watch mode
-              // but we still want to use module type tags
-              moduleFiles = firstBuild.emittedFiles || [];
-              files = moduleFiles.filter(x => x.extension === '.css');
+            if (isDifferentialLoadingNeeded) {
+              const sharedEntryPoints = [
+                ...getStylesEntryPointNames(styles),
+                ...getScriptsEntryPointNames(scripts),
+              ];
+
+              const noModuleAndModulePredictor = ({ name }: EmittedFiles) =>
+                name && !sharedEntryPoints.includes(name);
+              const fileExtractorPredictor = ({ name }: EmittedFiles) =>
+                name && sharedEntryPoints.includes(name);
+
+              if (options.watch) {
+                // differential loading is not enabled in watch mode
+                // but we still want to use module type tags
+                moduleFiles = (firstBuild.emittedFiles || []).filter(noModuleAndModulePredictor);
+              } else {
+                noModuleFiles = (firstBuild.emittedFiles || []).filter(noModuleAndModulePredictor);
+                moduleFiles = (secondBuild.emittedFiles || []).filter(noModuleAndModulePredictor);
+              }
+
+              files = (firstBuild.emittedFiles || []).filter(fileExtractorPredictor);
             } else {
               const { emittedFiles = [] } = firstBuild;
               files = emittedFiles.filter(x => x.name !== 'polyfills-es5');
@@ -259,8 +273,8 @@ export function buildWebpackBrowser(
               baseHref: options.baseHref,
               deployUrl: options.deployUrl,
               sri: options.subresourceIntegrity,
-              scripts: options.scripts,
-              styles: options.styles,
+              scripts,
+              styles,
               postTransform: transforms.indexHtml,
             }).pipe(
               map(() => ({ success: true })),

@@ -55,9 +55,10 @@ export async function generateWebpackConfig(
   // However this config generation is used by multiple builders such as dev-server
   const scriptTarget = tsConfig.options.target || ts.ScriptTarget.ES5;
   const buildBrowserFeatures = new BuildBrowserFeatures(projectRoot, scriptTarget);
-  const differentialLoading = context.builder.builderName === 'browser'
-    && !options.watch
-    && buildBrowserFeatures.isDifferentialLoadingNeeded();
+  const differentialLoading =
+    context.builder.builderName === 'browser' &&
+    !options.watch &&
+    buildBrowserFeatures.isDifferentialLoadingNeeded();
 
   const scriptTargets = [scriptTarget];
 
@@ -68,23 +69,22 @@ export async function generateWebpackConfig(
   // For differential loading, we can have several targets
   return scriptTargets.map(scriptTarget => {
     let buildOptions: NormalizedBrowserBuilderSchema = { ...options };
-    const supportES2015
-      = scriptTarget !== ts.ScriptTarget.ES3 && scriptTarget !== ts.ScriptTarget.ES5;
+    const supportES2015 =
+      scriptTarget !== ts.ScriptTarget.ES3 && scriptTarget !== ts.ScriptTarget.ES5;
 
     if (differentialLoading) {
       buildOptions = {
         ...options,
-        ...(
-          // FIXME: we do create better webpack config composition to achieve the below
-          // When DL is enabled and supportES2015 is true it means that we are on the second build
-          // This also means that we don't need to include styles and assets multiple times
-          supportES2015
-            ? {}
-            : {
-              styles: options.extractCss ? [] : options.styles,
+        ...// FIXME: we do create better webpack config composition to achieve the below
+        // When DL is enabled and supportES2015 is true it means that we are on the second build
+        // This also means that we don't need to include styles and assets multiple times
+        (supportES2015
+          ? {
+              styles: [],
+              scripts: [],
               assets: [],
             }
-        ),
+          : {}),
         es5BrowserSupport: undefined,
         esVersionInFileName: true,
         scriptTargetOverride: scriptTarget,
@@ -138,7 +138,6 @@ export async function generateWebpackConfig(
   });
 }
 
-
 export async function generateBrowserWebpackConfigFromWorkspace(
   options: BrowserBuilderSchema,
   context: BuilderContext,
@@ -174,13 +173,12 @@ export async function generateBrowserWebpackConfigFromWorkspace(
   );
 }
 
-
 export async function generateBrowserWebpackConfigFromContext(
   options: BrowserBuilderSchema,
   context: BuilderContext,
   webpackPartialGenerator: (wco: BrowserWebpackConfigOptions) => webpack.Configuration[],
   host: virtualFs.Host<fs.Stats> = new NodeJsSyncHost(),
-): Promise<{ workspace: experimental.workspace.Workspace, config: webpack.Configuration[] }> {
+): Promise<{ workspace: experimental.workspace.Workspace; config: webpack.Configuration[] }> {
   const registry = new schema.CoreSchemaRegistry();
   registry.addPostTransform(schema.transforms.addUndefinedDefaults);
 

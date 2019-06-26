@@ -11,7 +11,6 @@ import { RawSource, ReplaceSource } from 'webpack-sources';
 
 const parse5 = require('parse5');
 
-
 export type LoadOutputFileFunctionType = (file: string) => Promise<string>;
 
 export interface AugmentIndexHtmlOptions {
@@ -54,13 +53,7 @@ export interface FileInfo {
  * bundles for differential serving.
  */
 export async function augmentIndexHtml(params: AugmentIndexHtmlOptions): Promise<string> {
-  const {
-    loadOutputFile,
-    files,
-    noModuleFiles = [],
-    moduleFiles = [],
-    entrypoints,
-  } = params;
+  const { loadOutputFile, files, noModuleFiles = [], moduleFiles = [], entrypoints } = params;
 
   const stylesheets = new Set<string>();
   const scripts = new Set<string>();
@@ -69,7 +62,9 @@ export async function augmentIndexHtml(params: AugmentIndexHtmlOptions): Promise
   const mergedFiles = [...moduleFiles, ...noModuleFiles, ...files];
   for (const entrypoint of entrypoints) {
     for (const { extension, file, name } of mergedFiles) {
-      if (name !== entrypoint) { continue; }
+      if (name !== entrypoint) {
+        continue;
+      }
 
       switch (extension) {
         case '.js':
@@ -127,25 +122,23 @@ export async function augmentIndexHtml(params: AugmentIndexHtmlOptions): Promise
 
   let scriptElements = '';
   for (const script of scripts) {
-    const attrs: { name: string, value: string | null }[] = [
+    const attrs: { name: string; value: string | null }[] = [
       { name: 'src', value: (params.deployUrl || '') + script },
     ];
 
     // We want to include nomodule or module when a file is not common amongs all
     // such as runtime.js
     const scriptPredictor = ({ file }: FileInfo): boolean => file === script;
-    if (!files.some(scriptPredictor)) {
-      // in some cases for differential loading file with the same name is avialable in both
-      // nomodule and module such as scripts.js
-      // we shall not add these attributes if that's the case
-      const isNoModuleType = noModuleFiles.some(scriptPredictor);
-      const isModuleType = moduleFiles.some(scriptPredictor);
+    // in some cases for differential loading file with the same name is avialable in both
+    // nomodule and module such as scripts.js
+    // we shall not add these attributes if that's the case
+    const isNoModuleType = noModuleFiles.some(scriptPredictor);
+    const isModuleType = moduleFiles.some(scriptPredictor);
 
-      if (isNoModuleType && !isModuleType) {
-        attrs.push({ name: 'nomodule', value: null });
-      } else if (isModuleType && !isNoModuleType) {
-        attrs.push({ name: 'type', value: 'module' });
-      }
+    if (isNoModuleType && !isModuleType) {
+      attrs.push({ name: 'nomodule', value: null });
+    } else if (isModuleType && !isNoModuleType) {
+      attrs.push({ name: 'type', value: 'module' });
     }
 
     if (params.sri) {
@@ -154,15 +147,12 @@ export async function augmentIndexHtml(params: AugmentIndexHtmlOptions): Promise
     }
 
     const attributes = attrs
-      .map(attr => attr.value === null ? attr.name : `${attr.name}="${attr.value}"`)
+      .map(attr => (attr.value === null ? attr.name : `${attr.name}="${attr.value}"`))
       .join(' ');
     scriptElements += `<script ${attributes}></script>`;
   }
 
-  indexSource.insert(
-    scriptInsertionPoint,
-    scriptElements,
-  );
+  indexSource.insert(scriptInsertionPoint, scriptElements);
 
   // Adjust base href if specified
   if (typeof params.baseHref == 'string') {
@@ -176,13 +166,9 @@ export async function augmentIndexHtml(params: AugmentIndexHtmlOptions): Promise
     const baseFragment = treeAdapter.createDocumentFragment();
 
     if (!baseElement) {
-      baseElement = treeAdapter.createElement(
-        'base',
-        undefined,
-        [
-          { name: 'href', value: params.baseHref },
-        ],
-      );
+      baseElement = treeAdapter.createElement('base', undefined, [
+        { name: 'href', value: params.baseHref },
+      ]);
 
       treeAdapter.appendChild(baseFragment, baseElement);
       indexSource.insert(
@@ -227,10 +213,7 @@ export async function augmentIndexHtml(params: AugmentIndexHtmlOptions): Promise
     treeAdapter.appendChild(styleElements, element);
   }
 
-  indexSource.insert(
-    styleInsertionPoint,
-    parse5.serialize(styleElements, { treeAdapter }),
-  );
+  indexSource.insert(styleInsertionPoint, parse5.serialize(styleElements, { treeAdapter }));
 
   return indexSource.source();
 }
