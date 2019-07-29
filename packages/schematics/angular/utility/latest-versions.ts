@@ -21,5 +21,5 @@ export const latestVersions = {
   AngularPWA: '~0.802.0-next.2',
 
   tsickle: '^0.36.0',
-  ngPackagr: '^5.3.0',
+  ngPackagr: '^5.4.0',
 };
