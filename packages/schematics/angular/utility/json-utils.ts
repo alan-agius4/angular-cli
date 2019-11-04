@@ -143,7 +143,6 @@ export function removePropertyInAstObject(
 
   recorder.remove(start.offset, end.offset - start.offset);
   if (!nextProp) {
-
     recorder.insertRight(start.offset, '\n');
   }
 }
@@ -157,19 +156,32 @@ export function appendValueInAstArray(
 ) {
   const indentStr = _buildIndent(indent);
   let index = node.start.offset + 1;
+  // tslint:disable-next-line: no-any
+  let newNodes: any[] | undefined;
+
   if (node.elements.length > 0) {
     // Insert comma.
-    const last = node.elements[node.elements.length - 1];
-    recorder.insertRight(last.end.offset, ',');
-    index = indent ? last.end.offset + 1 : last.end.offset;
+    const { end } = node.elements[node.elements.length - 1];
+    const isClosingOnSameLine = node.start.offset - end.offset === 1;
+
+    if (isClosingOnSameLine && indent) {
+      // Reformat the entire array
+      recorder.remove(node.start.offset + 1, node.end.offset - 1);
+      newNodes = [
+        ...node.elements.map(({ value }) => value),
+        value,
+      ];
+    } else {
+      recorder.insertRight(end.offset, ',');
+      index = end.offset;
+    }
   }
 
   recorder.insertRight(
     index,
-    (node.elements.length === 0 && indent ? '\n' : '')
-    + ' '.repeat(indent)
-    + _stringifyContent(value, indentStr)
-    + indentStr.slice(0, -indent),
+    (newNodes ? '' : indentStr)
+    + _stringifyContent(newNodes || value, indentStr)
+    + (node.elements.length === 0 && indent ? indentStr.substr(0, -indent) : ''),
   );
 }
 

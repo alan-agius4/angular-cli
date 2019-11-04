@@ -172,7 +172,7 @@ describe('json-utils', () => {
     });
   });
 
-  describe('appendValueInAstArray', () => {
+  fdescribe('appendValueInAstArray', () => {
     it('should insert multiple props with different indentations', () => {
       const cases: Array<[string[], string, {}, number]> = [
         // initial | value | want | indent
@@ -197,6 +197,36 @@ describe('json-utils', () => {
         }, initial, indent);
         expect(got).toBe(JSON.stringify(want, null, indent));
         expect(JSON.parse(got)).toEqual(want);
+      }
+    });
+
+    it('should insert multiple props with different indentations (2)', () => {
+      const cases: Array<[string[], string, {}, number]> = [
+        // initial | value | want | indent
+        [[], z, [z], 0],
+        [[z], m, [z, m], 0],
+        [[m, z], a, [m, z, a], 0],
+        [[a, m, z], b, [a, m, z, b], 0],
+        // todo: investigate how to do this this of addition with the correct formatting
+        // [[], z, [z], 2],
+        [[z], m, [z, m], 2],
+        [[m, z], a, [m, z, a], 2],
+        [[a, m, z], b, [a, m, z, b], 2],
+        // todo: investigate how to do this this of addition with the correct formatting
+        // [[], z, [z], 4],
+        [[z], m, [z, m], 4],
+        [[m, z], a, [m, z, a], 4],
+        [[a, m, z], b, [a, m, z, b], 4],
+      ];
+      for (const c of cases) {
+        const [initial, value, want, indent] = c;
+        const got = runTest((rec: UpdateRecorder, ast: JsonAstObject) => {
+          expect(ast.properties[0].value.kind).toBe('array');
+          appendValueInAstArray(rec, ast.properties[0].value as unknown as JsonAstArray, value, indent * 2);
+        }, { data: initial }, indent);
+        const wantData = { data: want };
+        expect(got).toBe(JSON.stringify(wantData, null, indent));
+        expect(JSON.parse(got)).toEqual(wantData);
       }
     });
   });
