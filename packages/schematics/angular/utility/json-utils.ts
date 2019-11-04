@@ -50,7 +50,7 @@ export function insertPropertyInAstObjectInOrder(
 ) {
 
   if (node.properties.length === 0) {
-    appendPropertyInAstObject(recorder, node, propertyName, value, indent);
+    https://github.com/angular/angular-cli/blob/e70a2b04bd6bcc545e8f994601acecd75d0c6084/packages/schematics/angular/utility/json-utils.ts#L96PropertyInAstObject(recorder, node, propertyName, value, indent);
 
     return;
   }
@@ -143,7 +143,6 @@ export function removePropertyInAstObject(
 
   recorder.remove(start.offset, end.offset - start.offset);
   if (!nextProp) {
-
     recorder.insertRight(start.offset, '\n');
   }
 }
@@ -157,19 +156,21 @@ export function appendValueInAstArray(
 ) {
   const indentStr = _buildIndent(indent);
   let index = node.start.offset + 1;
+  let closingArrayIsOnSameLine = false;
   if (node.elements.length > 0) {
-    // Insert comma.
-    const last = node.elements[node.elements.length - 1];
-    recorder.insertRight(last.end.offset, ',');
-    index = indent ? last.end.offset + 1 : last.end.offset;
+    const { end } = node.elements[node.elements.length - 1];
+    // Add comma.
+    recorder.insertRight(end.offset, ',');
+    closingArrayIsOnSameLine = node.end.offset - end.offset === 1;
+    index = !closingArrayIsOnSameLine && indent ? end.offset + 1 : end.offset;
   }
 
   recorder.insertRight(
     index,
     (node.elements.length === 0 && indent ? '\n' : '')
-    + ' '.repeat(indent)
+    + (closingArrayIsOnSameLine ? '' : ' '.repeat(indent))
     + _stringifyContent(value, indentStr)
-    + indentStr.slice(0, -indent),
+    + (closingArrayIsOnSameLine ? '' : indentStr.slice(0 - indent)),
   );
 }
 
