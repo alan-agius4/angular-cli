@@ -6,17 +6,17 @@
  * found in the LICENSE file at https://angular.io/license
  */
 import { BaseException, logging } from '@angular-devkit/core';
-import { SpawnOptions, spawn } from 'child_process';
-import { Observable, combineLatest, forkJoin, of, throwError, zip } from 'rxjs';
-import { concatMap, filter, map, repeat, retryWhen, skip, skipUntil, take, tap, throwIfEmpty, timeout, skipWhile, startWith } from 'rxjs/operators';
+import { SpawnOptions, spawn, spawnSync } from 'child_process';
+import { Observable, combineLatest, forkJoin, of, throwError, zip, EMPTY } from 'rxjs';
+import { concatMap, filter, map, repeat, retryWhen, skip, skipUntil, take, tap, throwIfEmpty, timeout, skipWhile, startWith, takeUntil, first, scan } from 'rxjs/operators';
 import { Command } from './command';
-import { BenchmarkReporter, Capture, MetricGroup, CaptureWatch } from './interfaces';
+import { BenchmarkReporter, Capture, MetricGroup } from './interfaces';
 import { LocalMonitoredProcess } from './monitored-process';
 import { aggregateMetricGroups } from './utils';
 
 export interface RunBenchmarkWatchOptions {
   command: Command;
-  captures: CaptureWatch[];
+  captures: Capture[];
   reporters: BenchmarkReporter[];
   iterations?: number;
   retries?: number;
@@ -48,11 +48,17 @@ export function runBenchmarkWatch({
   const monitoredProcess = new LocalMonitoredProcess(command);
   const processFailed = new BaseException('Wrong exit code.');
 
-  const run = monitoredProcess.run().pipe(startWith(undefined));
+  const stats$ = monitoredProcess.stats$.pipe(
+    takeUntil(monitoredProcess.stdout$.pipe(
+      first(stdout => triggerMatcher.test(stdout.toString())),
+      timeout(triggerTimeout),
+    )),
+  );
 
-  return combineLatest([run, monitoredProcess.stdout$])
+  return monitoredProcess.run()
     .pipe(
-      concatMap(([processExitCode]) => {
+      startWith(undefined),
+      concatMap(processExitCode => {
         if (processExitCode !== undefined && processExitCode != command.expectedExitCode) {
           logger.debug(`${debugPrefix()} exited with ${processExitCode} but `
             + `${command.expectedExitCode} was expected`);
@@ -62,31 +68,33 @@ export function runBenchmarkWatch({
 
         return of(null);
       }),
+      skipUntil(monitoredProcess.stdout$.pipe(
+        first(stdout => triggerMatcher.test(stdout.toString())),
+        timeout(triggerTimeout),
+      )),
       concatMap(() => {
-        return forkJoin(captures.map(capture => capture(monitoredProcess, triggerMatcher, triggerTimeout)))
+        return of(EMPTY)
           .pipe(
+            tap(() => {
+              const { cmd, cwd, args } = triggerCmd;
+              spawnSync(cmd, args, { cwd });
+            }),
+            concatMap(() => forkJoin(captures.map(capture => capture(stats$)))),
             throwIfEmpty(() => new Error('Nothing was captured')),
             tap(() => logger.debug(`${debugPrefix()} finished successfully`)),
             map(newMetricGroups => {
               // Aggregate metric groups into a single one.
               if (aggregatedMetricGroups.length === 0) {
-                // Skip first since the first item is for the first run which
-                // Which shound't be included for in  benchmarking
-                aggregatedMetricGroups = [];
+                aggregatedMetricGroups = newMetricGroups;
               } else {
                 aggregatedMetricGroups = aggregatedMetricGroups.map((_, idx) =>
                   aggregateMetricGroups(aggregatedMetricGroups[idx], newMetricGroups[idx]),
                 );
               }
 
-              successfulRuns++;
+              successfulRuns += 1;
 
               return aggregatedMetricGroups;
-            }),
-            tap(() => {
-              const { cmd, cwd, args } = triggerCmd;
-
-              spawn(cmd, args, { cwd });
             }),
             repeat(iterations + 1),
             retryWhen(errors => errors
