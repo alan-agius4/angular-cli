@@ -27,20 +27,18 @@ fdescribe('defaultWatchStatsCapture', () => {
         processes: 5, cpu: 20, memory: 3 * 1e6, elapsed: 3000,
         ...ignoredStats,
       });
-      obs.complete();
     });
 
     const stdout$ = new Observable<Buffer>(obs => {
       obs.next(Buffer.from('Start.'));
-      obs.next(Buffer.from('Finisxh.'));
-      obs.complete();
+      obs.next(Buffer.from('Finish.'));
     }).pipe(
-      delay(250),
+      delay(100),
     );
 
     const process = { stats$, stdout$ } as {} as MonitoredProcess;
 
-    const res = await defaultWatchStatsCapture(process, /Finish/).pipe(toArray()).toPromise();
+    const res = await defaultWatchStatsCapture(process, /Finish/, 1000).pipe(toArray()).toPromise();
     expect(res).toEqual([{
       name: 'Process Stats',
       metrics: [

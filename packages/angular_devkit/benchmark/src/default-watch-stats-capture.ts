@@ -7,14 +7,15 @@
  */
 
 import { Observable } from 'rxjs';
-import { map, reduce, takeUntil, first, timeout, filter } from 'rxjs/operators';
-import { AggregatedProcessStats, MetricGroup, MonitoredProcess, CaptureWatch } from './interfaces';
+import { first, map, reduce, takeUntil, timeout } from 'rxjs/operators';
+import { AggregatedProcessStats, CaptureWatch, MetricGroup, MonitoredProcess } from './interfaces';
 import { cumulativeMovingAverage, max } from './utils';
 
 
 export const defaultWatchStatsCapture: CaptureWatch = (
   process: MonitoredProcess,
-  triggerText: RegExp,
+  triggerMatcher: RegExp,
+  triggerTimeout: number,
 ): Observable<MetricGroup> => {
   type Accumulator = {
     elapsed: number,
@@ -37,9 +38,8 @@ export const defaultWatchStatsCapture: CaptureWatch = (
 
   return process.stats$.pipe(
     takeUntil(process.stdout$.pipe(
-      tap(x => console.log(x)),
-      filter(stdout => !triggerText.test(stdout.toString())),
-      timeout(1),
+      first(stdout => triggerMatcher.test(stdout.toString())),
+      timeout(triggerTimeout),
     )),
     reduce<AggregatedProcessStats, Accumulator>((acc, val, idx) => ({
       elapsed: val.elapsed,

@@ -54,7 +54,7 @@ export interface MetricGroup {
 export type Capture = (process: MonitoredProcess) => Observable<MetricGroup>;
 
 
-export type CaptureWatch = (process: MonitoredProcess, triggerText: RegExp) => Observable<MetricGroup>;
+export type CaptureWatch = (process: MonitoredProcess, triggerMatcher: RegExp, triggerTimeout: number) => Observable<MetricGroup>;
 
 // TODO: might need to allow reporters to say they are finished.
 export type BenchmarkReporter = (command: Command, groups: MetricGroup[]) => void;

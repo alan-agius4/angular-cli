@@ -22,6 +22,10 @@ export interface RunBenchmarkWatchOptions {
   retries?: number;
   expectedExitCode?: number;
   logger?: logging.Logger;
+
+  triggerMatcher: RegExp;
+  triggerTimeout?: number;
+  triggerCmd: Command;
 }
 
 export class MaximumRetriesExceeded extends BaseException {
@@ -30,8 +34,9 @@ export class MaximumRetriesExceeded extends BaseException {
   }
 }
 
-export function runBenchmark({
+export function runBenchmarkWatch({
   command, captures, reporters = [], iterations = 5, retries = 5, logger = new logging.NullLogger(),
+  triggerMatcher, triggerTimeout = 5000, triggerCmd,
 }: RunBenchmarkWatchOptions): Observable<MetricGroup[]> {
 
   let successfulRuns = 0;
@@ -42,9 +47,6 @@ export function runBenchmark({
   // Run the process and captures, wait for both to finish, and average out the metrics.
   const monitoredProcess = new LocalMonitoredProcess(command);
   const processFailed = new BaseException('Wrong exit code.');
-  let triggerText: RegExp;
-  let triggerCmd: Command;
-  let triggerTimeOut = 1;
 
   const run = monitoredProcess.run().pipe(startWith(undefined));
 
@@ -61,15 +63,16 @@ export function runBenchmark({
         return of(null);
       }),
       concatMap(() => {
-        return forkJoin(captures.map(capture => capture(monitoredProcess, triggerText)))
+        return forkJoin(captures.map(capture => capture(monitoredProcess, triggerMatcher, triggerTimeout)))
           .pipe(
             throwIfEmpty(() => new Error('Nothing was captured')),
-            timeout(triggerTimeOut),
             tap(() => logger.debug(`${debugPrefix()} finished successfully`)),
             map(newMetricGroups => {
               // Aggregate metric groups into a single one.
               if (aggregatedMetricGroups.length === 0) {
-                aggregatedMetricGroups = newMetricGroups;
+                // Skip first since the first item is for the first run which
+                // Which shound't be included for in  benchmarking
+                aggregatedMetricGroups = [];
               } else {
                 aggregatedMetricGroups = aggregatedMetricGroups.map((_, idx) =>
                   aggregateMetricGroups(aggregatedMetricGroups[idx], newMetricGroups[idx]),
@@ -83,10 +86,9 @@ export function runBenchmark({
             tap(() => {
               const { cmd, cwd, args } = triggerCmd;
 
-              // Spawn the process.
               spawn(cmd, args, { cwd });
             }),
-            repeat(iterations),
+            repeat(iterations + 1),
             retryWhen(errors => errors
               .pipe(concatMap(val => {
                 // Otherwise check if we're still within the retry threshold.
@@ -105,7 +107,6 @@ export function runBenchmark({
             ),
           );
       }),
-      skip(1),
       tap(groups => reporters.forEach(reporter => reporter(command, groups))),
       take(1),
     );
