@@ -75,9 +75,11 @@
       "updateTypes": ["patch", "minor"],
       "groupName": "devDependencies (non-major)",
       "excludePackagePatterns": [
-        "/typescript/",
-        "/bazel/",
-        "/angular/"
+        "typescript",
+        "^@bazel\/.*",
+        "^build_bazel.*",
+        "^bazel_toolchains$",
+        "^@angular\/.*"
       ]
     }
   ]
