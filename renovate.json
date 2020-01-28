@@ -77,7 +77,7 @@
       "excludePackagePatterns": [
         "/typescript/"
         "/bazel/",
-        "/angular/",
+        "/angular/"
       ]
     }
   ]
