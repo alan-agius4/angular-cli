@@ -4,7 +4,7 @@
   "semanticPrefix": "build",
   "commitMessage": "{{semanticPrefix}} update {{depName}} to version {{newVersion}}",
   "separateMajorMinor": false,
-  "prHourlyLimit": 2,
+  "prHourlyLimit": 5,
   "labels": [
     "PR target: master-only",
     "PR action: merge"
@@ -13,11 +13,6 @@
   "lockFileMaintenance": {
     "enabled": true
   },
-  "schedule": [
-    "after 10pm every weekday",
-    "before 4am every weekday",
-    "every weekend"
-  ],
   "baseBranches": [
     "master"
   ],
@@ -74,6 +69,11 @@
         "major"
       ],
       "enabled": false
+    },
+    {
+      "depTypeList": ["devDependencies"],
+      "updateTypes": ["patch", "minor"],
+      "groupName": "devDependencies (non-major)"
     }
   ]
 }
