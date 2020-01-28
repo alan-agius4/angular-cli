@@ -73,7 +73,12 @@
     {
       "depTypeList": ["devDependencies"],
       "updateTypes": ["patch", "minor"],
-      "groupName": "devDependencies (non-major)"
+      "groupName": "devDependencies (non-major)",
+      "excludePackagePatterns": [
+        "/typescript/"
+        "/bazel/",
+        "/angular/",
+      ]
     }
   ]
 }
