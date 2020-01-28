@@ -15,7 +15,7 @@ http_archive(
 # We use protocol buffers for the Build Event Protocol
 git_repository(
     name = "com_google_protobuf",
-    commit = "6263268b8c1b78a8a9b65acd6f5dd5c04dd9b0e1",
+    commit = "f4a6b99339664ade18234b7c0774c3928f991daa",
     remote = "https://github.com/protocolbuffers/protobuf",
     shallow_since = "1559159889 -0400",
 )
