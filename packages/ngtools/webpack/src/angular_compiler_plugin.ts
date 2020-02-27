@@ -131,6 +131,7 @@ export class AngularCompilerPlugin {
   private _logger: logging.Logger;
 
   private _mainFields: string[] = [];
+  private _ngccProcessor: NgccProcessor | undefined;
 
   constructor(options: AngularCompilerPluginOptions) {
     this._options = Object.assign({}, options);
@@ -390,7 +391,7 @@ export class AngularCompilerPlugin {
       newProgramSourceFiles?.filter(
         f => f.isDeclarationFile && !this._nodeModulesRegExp.test(f.fileName),
       )
-      .map(f => this._compilerHost.denormalizePath(f.fileName)),
+        .map(f => this._compilerHost.denormalizePath(f.fileName)),
     );
 
     if (!oldTsProgram) {
@@ -604,7 +605,7 @@ export class AngularCompilerPlugin {
     if (this._typeCheckerProcess && !this._typeCheckerProcess.killed) {
       try {
         this._typeCheckerProcess.kill();
-      } catch {}
+      } catch { }
       this._typeCheckerProcess = null;
     }
   }
@@ -767,9 +768,8 @@ export class AngularCompilerPlugin {
         }
       }
 
-      let ngccProcessor: NgccProcessor | undefined;
       if (this._compilerOptions.enableIvy) {
-        ngccProcessor = new NgccProcessor(
+        this._ngccProcessor = new NgccProcessor(
           this._mainFields,
           compilerWithFileSystems.inputFileSystem,
           this._warnings,
@@ -789,7 +789,7 @@ export class AngularCompilerPlugin {
         host,
         true,
         this._options.directTemplateLoading,
-        ngccProcessor,
+        this._ngccProcessor,
         this._moduleResolutionCache,
       );
 
@@ -819,6 +819,12 @@ export class AngularCompilerPlugin {
         inputDecorator,
         replacements,
       );
+    });
+
+    compiler.hooks.beforeCompile.tapPromise('angular-compiler', async () => {
+      if (this._ngccProcessor) {
+        return this._ngccProcessor.process();
+      }
     });
 
     if (this._discoverLazyRoutes) {

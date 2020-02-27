@@ -7,6 +7,7 @@
  */
 
 import { Logger, PathMappings, process as mainNgcc } from '@angular/compiler-cli/ngcc';
+import { setupMaster } from 'cluster';
 import { accessSync, constants, existsSync } from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
@@ -47,6 +48,54 @@ export class NgccProcessor {
         paths,
       };
     }
+  }
+
+  async process() {
+    const timeLabel = 'NgccProcessor.process';
+    time(timeLabel);
+
+    const corePackage = this.tryResolvePackage('@angular/core', this._nodeModulesDirectory);
+
+    // If the package.json is read only we should skip calling NGCC.
+    // With Bazel when running under sandbox the filesystem is read-only.
+    try {
+      if (corePackage) {
+        accessSync(corePackage, constants.W_OK);
+      }
+    } catch {
+      return;
+    }
+
+    // The below is a workaround for NGCC fork clustering issues.
+    // The current NGCC implemementation of parallelism using clusting is problematic when using via an API.
+    // because when using cluster.fork the entire process life cycle will get restarted. In a nutshell what happens
+    // is that we do `ng build` and NGCC does `cluster.fork()` for each fork `ng build` is re run.
+    setupMaster({
+      exec: require.resolve('@angular/compiler-cli/ngcc/main-ngcc.js'),
+      args: [
+        '--basePath',
+        this._nodeModulesDirectory,
+        '--propertiesToConsider',
+        ...this.propertiesToConsider,
+        '--compileAllFormats',
+        'false',
+        '--createNewEntryPointFormats',
+        'true',
+        '--async',
+      ],
+    });
+
+    await mainNgcc({
+      basePath: this._nodeModulesDirectory,
+      propertiesToConsider: this.propertiesToConsider,
+      compileAllFormats: false,
+      createNewEntryPointFormats: true,
+      logger: this._logger,
+      async: true,
+      pathMappings: this._pathMappings,
+    });
+
+    timeEnd(timeLabel);
   }
 
   processModule(
@@ -145,9 +194,9 @@ class NgccLogger implements Logger {
   constructor(
     private readonly compilationWarnings: (Error | string)[],
     private readonly compilationErrors: (Error | string)[],
-  ) {}
+  ) { }
 
-  debug(..._args: string[]) {}
+  debug(..._args: string[]) { }
 
   info(...args: string[]) {
     // Log to stderr because it's a progress-like info message.
