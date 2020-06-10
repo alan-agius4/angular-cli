@@ -766,7 +766,6 @@ export class AngularCompilerPlugin {
           this._warnings,
           this._errors,
           this._basePath,
-          this._compilerOptions,
           this._tsConfigPath,
         );
 
