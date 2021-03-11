@@ -132,7 +132,7 @@ describe('Browser Builder lazy modules', () => {
       'src/main.ts': `import('./lazy-module');`,
     });
     // Using `import()` in TS require targetting `esnext` modules.
-    host.replaceInFile('src/tsconfig.app.json', `"module": "es2015"`, `"module": "esnext"`);
+    host.replaceInFile('src/tsconfig.app.json', `"module": "es2017"`, `"module": "esnext"`);
 
     const { files } = await browserBuild(architect, host, target);
     expect(files['lazy-module.js']).not.toBeUndefined();
@@ -146,7 +146,7 @@ describe('Browser Builder lazy modules', () => {
         import(/*webpackChunkName: '[request]'*/'./lazy-' + lazyFileName);
       `,
     });
-    host.replaceInFile('src/tsconfig.app.json', `"module": "es2015"`, `"module": "esnext"`);
+    host.replaceInFile('src/tsconfig.app.json', `"module": "es2017"`, `"module": "esnext"`);
 
     const { files } = await browserBuild(architect, host, target);
     expect(files['lazy-module.js']).not.toBeUndefined();
