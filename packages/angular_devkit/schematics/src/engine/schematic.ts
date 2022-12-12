@@ -7,8 +7,6 @@
  */
 
 import { BaseException } from '@angular-devkit/core';
-import { Observable } from 'rxjs';
-import { concatMap, first, map } from 'rxjs/operators';
 import { callRule } from '../rules/call';
 import { Tree } from '../tree/interface';
 import { ScopedTree } from '../tree/scoped';
@@ -49,45 +47,35 @@ export class SchematicImpl<CollectionT extends object, SchematicT extends object
     return this._collection;
   }
 
-  call<OptionT extends object>(
+  async call<OptionT extends object>(
     options: OptionT,
-    host: Observable<Tree>,
+    host: Tree,
     parentContext?: Partial<TypedSchematicContext<CollectionT, SchematicT>>,
     executionOptions?: Partial<ExecutionOptions>,
-  ): Observable<Tree> {
+  ): Promise<Tree> {
     const context = this._engine.createContext(this, parentContext, executionOptions);
 
-    return host.pipe(
-      first(),
-      concatMap((tree) =>
-        this._engine
-          .transformOptions(this, options, context)
-          .pipe(map((o) => [tree, o] as [Tree, OptionT])),
-      ),
-      concatMap(([tree, transformedOptions]) => {
-        let input: Tree;
-        let scoped = false;
-        if (executionOptions && executionOptions.scope) {
-          scoped = true;
-          input = new ScopedTree(tree, executionOptions.scope);
-        } else {
-          input = tree;
-        }
+    const transformedOptions = await this._engine
+      .transformOptions(this, options, context)
+      .toPromise();
+    let input: Tree;
+    let scoped = false;
+    if (executionOptions && executionOptions.scope) {
+      scoped = true;
+      input = new ScopedTree(host, executionOptions.scope);
+    } else {
+      input = host;
+    }
 
-        return callRule(this._factory(transformedOptions), input, context).pipe(
-          map((output) => {
-            if (output === input) {
-              return tree;
-            } else if (scoped) {
-              tree.merge(output);
+    const output = await callRule(this._factory(transformedOptions), input, context);
+    if (output === input) {
+      return host;
+    } else if (scoped) {
+      host.merge(output);
 
-              return tree;
-            } else {
-              return output;
-            }
-          }),
-        );
-      }),
-    );
+      return host;
+    } else {
+      return output;
+    }
   }
 }

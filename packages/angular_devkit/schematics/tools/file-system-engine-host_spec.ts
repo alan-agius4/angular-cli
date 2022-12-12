@@ -11,7 +11,7 @@ import { normalize, virtualFs } from '@angular-devkit/core';
 import { HostSink, HostTree, SchematicEngine } from '@angular-devkit/schematics';
 import { FileSystemEngineHost } from '@angular-devkit/schematics/tools';
 import * as path from 'path';
-import { from, of as observableOf } from 'rxjs';
+import { from } from 'rxjs';
 
 describe('FileSystemEngineHost', () => {
   // We need to resolve a file that actually exists, and not just a folder.
@@ -306,8 +306,7 @@ describe('FileSystemEngineHost', () => {
     const schematic = collection.createSchematic('schematic1');
 
     schematic
-      .call({}, observableOf(new HostTree(host)))
-      .toPromise()
+      .call({}, new HostTree(host))
       .then((tree) => {
         return new HostSink(host).commit(tree).toPromise();
       })
@@ -349,8 +348,7 @@ describe('FileSystemEngineHost', () => {
     const schematic = collection.createSchematic('schematic-1');
 
     schematic
-      .call({}, observableOf(new HostTree(host)))
-      .toPromise()
+      .call({}, new HostTree(host))
       .then((tree) => new HostSink(host).commit(tree).toPromise())
       .then(() => engine.executePostTasks().toPromise())
       .then(() => done.fail())
