@@ -22,8 +22,15 @@ import {
 import { WorkspaceHost } from '@angular-devkit/architect/node';
 import { TestProjectHost } from '@angular-devkit/architect/testing';
 import { getSystemPath, join, json, logging, normalize } from '@angular-devkit/core';
-import { Observable, Subject, from as observableFrom, of as observableOf } from 'rxjs';
-import { catchError, finalize, first, map, mergeMap, shareReplay } from 'rxjs/operators';
+import {
+  Observable,
+  Subject,
+  firstValueFrom,
+  lastValueFrom,
+  from as observableFrom,
+  of as observableOf,
+} from 'rxjs';
+import { catchError, finalize, map, mergeMap, shareReplay } from 'rxjs/operators';
 import { BuilderWatcherFactory, WatcherNotifier } from './file-watching';
 
 export interface BuilderHarnessExecutionResult<T extends BuilderOutput = BuilderOutput> {
@@ -207,8 +214,8 @@ export class BuilderHarness<T> {
           }
         }
 
-        const validator = await this.schemaRegistry.compile(schema ?? true).toPromise();
-        const { data } = await validator(options).toPromise();
+        const validator = await lastValueFrom(this.schemaRegistry.compile(schema ?? true));
+        const { data } = await lastValueFrom(validator(options));
 
         return data as json.JsonObject;
       },
@@ -274,7 +281,7 @@ export class BuilderHarness<T> {
     options?: Partial<BuilderHarnessExecutionOptions>,
   ): Promise<BuilderHarnessExecutionResult> {
     // Return the first result
-    return this.execute(options).pipe(first()).toPromise();
+    return firstValueFrom(this.execute(options));
   }
 
   async appendToFile(path: string, content: string): Promise<void> {
@@ -447,7 +454,10 @@ class HarnessBuilderContext implements BuilderContext {
       },
       output: output.pipe(shareReplay()),
       get result() {
-        return this.output.pipe(first()).toPromise();
+        return firstValueFrom(this.output);
+      },
+      get lastOutput() {
+        return lastValueFrom(this.output);
       },
     };
 

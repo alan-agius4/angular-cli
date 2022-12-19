@@ -182,7 +182,7 @@ describe('Browser Builder file replacements', () => {
     const logger = new logging.Logger('');
 
     // Race between a timeout and the expected log entry.
-    const stop$ = race<null | string>(
+    const stop$ = race(
       of(null).pipe(delay((45000 * 2) / 3)),
       logger.pipe(
         filter((entry) => entry.message.includes(expectedError)),

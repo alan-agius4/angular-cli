@@ -142,7 +142,9 @@ export class NodeJsAsyncHost implements virtualFs.Host<Stats> {
           });
         });
 
-      return () => watcher.close();
+      return () => {
+        void watcher.close();
+      };
     }).pipe(publish(), refCount());
   }
 }
@@ -257,7 +259,9 @@ export class NodeJsSyncHost implements virtualFs.Host<Stats> {
           });
         });
 
-      return () => watcher.close();
+      return () => {
+        void watcher.close();
+      };
     }).pipe(publish(), refCount());
   }
 }

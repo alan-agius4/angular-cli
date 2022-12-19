@@ -7,7 +7,7 @@
  */
 
 import { json, logging } from '@angular-devkit/core';
-import { Observable, from, merge, of, onErrorResumeNext } from 'rxjs';
+import { Observable, firstValueFrom, from, merge, of, onErrorResumeNext } from 'rxjs';
 import {
   concatMap,
   first,
@@ -335,9 +335,8 @@ function _validateOptionsFactory(host: ArchitectHost, registry: json.schema.Sche
         throw new Error(`No builder info were found for builder ${JSON.stringify(builderName)}.`);
       }
 
-      return registry
-        .compile(builderInfo.optionSchema)
-        .pipe(
+      return firstValueFrom(
+        registry.compile(builderInfo.optionSchema).pipe(
           concatMap((validation) => validation(options)),
           switchMap(({ data, success, errors }) => {
             if (success) {
@@ -346,8 +345,8 @@ function _validateOptionsFactory(host: ArchitectHost, registry: json.schema.Sche
 
             throw new json.schema.SchemaValidationException(errors);
           }),
-        )
-        .toPromise();
+        ),
+      );
     },
     {
       name: '..validateOptions',

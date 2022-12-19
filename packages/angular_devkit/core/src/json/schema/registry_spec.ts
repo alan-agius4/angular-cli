@@ -7,6 +7,7 @@
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { lastValueFrom } from 'rxjs';
 import { map, mergeMap } from 'rxjs/operators';
 import { SchemaFormat } from './interface';
 import { CoreSchemaRegistry, SchemaValidationException } from './registry';
@@ -376,8 +377,8 @@ describe('CoreSchemaRegistry', () => {
     registry.addPostTransform(addUndefinedDefaults);
     const data = { a: 1, b: 2 };
 
-    const validate = await registry.compile(true).toPromise();
-    const result = await validate(data).toPromise();
+    const validate = await lastValueFrom(registry.compile(true));
+    const result = await lastValueFrom(validate(data));
 
     expect(result.success).toBe(true);
     expect(result.data).toBe(data);

@@ -6,6 +6,7 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
+import { lastValueFrom } from 'rxjs';
 import { mergeMap } from 'rxjs/operators';
 import { CoreSchemaRegistry } from './registry';
 import { addUndefinedDefaults } from './transforms';
@@ -16,37 +17,38 @@ describe('addUndefinedDefaults', () => {
     registry.addPreTransform(addUndefinedDefaults);
     const data: any = {}; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-    const result = await registry
-      .compile({
-        properties: {
-          bool: { type: 'boolean' },
-          str: { type: 'string', default: 'someString' },
-          obj: {
-            properties: {
-              num: { type: 'number' },
-              other: { type: 'number', default: 0 },
+    const result = await lastValueFrom(
+      registry
+        .compile({
+          properties: {
+            bool: { type: 'boolean' },
+            str: { type: 'string', default: 'someString' },
+            obj: {
+              properties: {
+                num: { type: 'number' },
+                other: { type: 'number', default: 0 },
+              },
+            },
+            objAllOk: {
+              allOf: [{ type: 'object' }],
+            },
+            objAllBad: {
+              allOf: [{ type: 'object' }, { type: 'number' }],
+            },
+            objOne: {
+              oneOf: [{ type: 'object' }],
+            },
+            objNotOk: {
+              not: { not: { type: 'object' } },
+            },
+            objNotBad: {
+              type: 'object',
+              not: { type: 'object' },
             },
           },
-          objAllOk: {
-            allOf: [{ type: 'object' }],
-          },
-          objAllBad: {
-            allOf: [{ type: 'object' }, { type: 'number' }],
-          },
-          objOne: {
-            oneOf: [{ type: 'object' }],
-          },
-          objNotOk: {
-            not: { not: { type: 'object' } },
-          },
-          objNotBad: {
-            type: 'object',
-            not: { type: 'object' },
-          },
-        },
-      })
-      .pipe(mergeMap((validator) => validator(data)))
-      .toPromise();
+        })
+        .pipe(mergeMap((validator) => validator(data))),
+    );
 
     expect(result.success).toBeTrue();
     expect(data.bool).toBeUndefined();
@@ -72,20 +74,21 @@ describe('addUndefinedDefaults', () => {
       },
     };
 
-    const result = await registry
-      .compile({
-        properties: {
-          bool: { type: 'boolean', default: true },
-          str: { type: 'string', default: 'someString' },
-          obj: {
-            properties: {
-              num: { type: 'number', default: 0 },
+    const result = await lastValueFrom(
+      registry
+        .compile({
+          properties: {
+            bool: { type: 'boolean', default: true },
+            str: { type: 'string', default: 'someString' },
+            obj: {
+              properties: {
+                num: { type: 'number', default: 0 },
+              },
             },
           },
-        },
-      })
-      .pipe(mergeMap((validator) => validator(data)))
-      .toPromise();
+        })
+        .pipe(mergeMap((validator) => validator(data))),
+    );
 
     expect(result.success).toBeTrue();
     expect(data.bool).toBeTrue();
@@ -145,14 +148,18 @@ describe('addUndefinedDefaults', () => {
       },
     });
 
-    const result1 = await validator.pipe(mergeMap((validator) => validator(dataNoObj))).toPromise();
+    const result1 = await lastValueFrom(
+      validator.pipe(mergeMap((validator) => validator(dataNoObj))),
+    );
 
     expect(result1.success).toBeTrue();
     expect(dataNoObj.bool).toBeTrue();
     expect(dataNoObj.obj).toBeTrue();
     expect(dataNoObj.noDefaultOneOf).toBeUndefined();
 
-    const result2 = await validator.pipe(mergeMap((validator) => validator(dataObj))).toPromise();
+    const result2 = await lastValueFrom(
+      validator.pipe(mergeMap((validator) => validator(dataObj))),
+    );
 
     expect(result2.success).toBeTrue();
     expect(dataObj.bool).toBeTrue();
@@ -204,13 +211,17 @@ describe('addUndefinedDefaults', () => {
       },
     });
 
-    const result1 = await validator.pipe(mergeMap((validator) => validator(dataNoObj))).toPromise();
+    const result1 = await lastValueFrom(
+      validator.pipe(mergeMap((validator) => validator(dataNoObj))),
+    );
 
     expect(result1.success).toBeTrue();
     expect(dataNoObj.bool).toBeTrue();
     expect(dataNoObj.obj).toBeTrue();
 
-    const result2 = await validator.pipe(mergeMap((validator) => validator(dataObj))).toPromise();
+    const result2 = await lastValueFrom(
+      validator.pipe(mergeMap((validator) => validator(dataObj))),
+    );
 
     expect(result2.success).toBeTrue();
     expect(dataObj.bool).toBeTrue();
@@ -246,12 +257,16 @@ describe('addUndefinedDefaults', () => {
       },
     });
 
-    const result1 = await validator.pipe(mergeMap((validator) => validator(dataNoObj))).toPromise();
+    const result1 = await lastValueFrom(
+      validator.pipe(mergeMap((validator) => validator(dataNoObj))),
+    );
     expect(result1.success).toBeTrue();
     expect(dataNoObj['bool']).toBeFalse();
     expect(dataNoObj['boolRef']).toBeFalse();
 
-    const result2 = await validator.pipe(mergeMap((validator) => validator(dataObj))).toPromise();
+    const result2 = await lastValueFrom(
+      validator.pipe(mergeMap((validator) => validator(dataObj))),
+    );
     expect(result2.success).toBeTrue();
     expect(dataObj['bool']).toBeFalse();
     expect(dataObj['boolRef']).toBeTrue();

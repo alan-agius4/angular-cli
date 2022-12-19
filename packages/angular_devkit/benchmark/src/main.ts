@@ -11,6 +11,7 @@ import { logging, tags } from '@angular-devkit/core';
 import { ProcessOutput } from '@angular-devkit/core/node';
 import * as ansiColors from 'ansi-colors';
 import { appendFileSync, writeFileSync } from 'fs';
+import { lastValueFrom } from 'rxjs';
 import { filter, map, toArray } from 'rxjs/operators';
 import yargsParser from 'yargs-parser';
 import { Command } from '../src/command';
@@ -215,7 +216,7 @@ export async function main({
       res$ = runBenchmark({ command, captures, reporters, iterations, retries, logger });
     }
 
-    const res = await res$.pipe(toArray()).toPromise();
+    const res = await lastValueFrom(res$.pipe(toArray()));
     if (res.length === 0) {
       return 1;
     }

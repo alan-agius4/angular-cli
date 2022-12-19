@@ -6,6 +6,7 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
+import { lastValueFrom } from 'rxjs';
 import { toArray } from 'rxjs/operators';
 import { LogEntry, Logger } from './logger';
 import { NullLogger } from './null-logger';
@@ -13,9 +14,7 @@ import { NullLogger } from './null-logger';
 describe('NullLogger', () => {
   it('works', (done: DoneFn) => {
     const logger = new NullLogger();
-    logger
-      .pipe(toArray())
-      .toPromise()
+    lastValueFrom(logger.pipe(toArray()))
       .then((observed: LogEntry[]) => {
         expect(observed).toEqual([]);
       })
@@ -31,9 +30,7 @@ describe('NullLogger', () => {
 
   it('nullifies children', (done: DoneFn) => {
     const logger = new Logger('test');
-    logger
-      .pipe(toArray())
-      .toPromise()
+    lastValueFrom(logger.pipe(toArray()))
       .then((observed: LogEntry[]) => {
         expect(observed).toEqual([]);
       })

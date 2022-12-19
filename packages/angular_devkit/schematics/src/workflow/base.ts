@@ -183,7 +183,7 @@ export abstract class BaseWorkflow implements Workflow {
             .executePostTasks()
             .pipe(
               tap({ complete: () => this._lifeCycle.next({ kind: 'post-tasks-end' }) }),
-              defaultIfEmpty(),
+              defaultIfEmpty(undefined),
               last(),
             );
         }),

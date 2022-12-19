@@ -8,6 +8,7 @@
 
 import { json, workspaces } from '@angular-devkit/core';
 import { existsSync, promises as fs } from 'fs';
+import assert from 'node:assert';
 import * as os from 'os';
 import * as path from 'path';
 import { PackageManager } from '../../lib/config/workspace-schema';
@@ -254,8 +255,12 @@ export async function validateWorkspace(data: json.JsonObject, isGlobal: boolean
   const { formats } = await import('@angular-devkit/schematics');
   const registry = new json.schema.CoreSchemaRegistry(formats.standardFormats);
   const validator = await registry.compile(schemaToValidate).toPromise();
-
-  const { success, errors } = await validator(data).toPromise();
+  // TODO(RXJS): temporary assert to avoid adding rxjs dependency.
+  assert(validator);
+  const result = await validator(data).toPromise();
+  // TODO(RXJS): temporary assert to avoid adding rxjs dependency.
+  assert(result);
+  const { success, errors } = result;
   if (!success) {
     throw new json.schema.SchemaValidationException(errors);
   }

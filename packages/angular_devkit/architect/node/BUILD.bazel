@@ -40,6 +40,7 @@ ts_library(
     deps = [
         ":node",
         "//packages/angular_devkit/architect",
+        "@npm//rxjs",
     ],
 )
 

@@ -14,7 +14,7 @@ import {
   from as observableFrom,
   of as observableOf,
 } from 'rxjs';
-import { concatMap, ignoreElements, map, mergeMap } from 'rxjs/operators';
+import { concatMap, defaultIfEmpty, ignoreElements, map, mergeMap } from 'rxjs/operators';
 import { FileAlreadyExistException, FileDoesNotExistException } from '../exception/exception';
 import {
   Action,
@@ -167,7 +167,7 @@ export abstract class SimpleSinkBase implements Sink {
       ),
       deferObservable(() => this._done()),
       deferObservable(() => this.postCommit() || observableOf(null)),
-    ).pipe(ignoreElements());
+    ).pipe(ignoreElements(), defaultIfEmpty(undefined));
   }
 }
 

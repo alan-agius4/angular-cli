@@ -7,6 +7,7 @@
  */
 
 import { json } from '@angular-devkit/core';
+import assert from 'node:assert';
 import yargs from 'yargs';
 
 /**
@@ -198,6 +199,8 @@ export async function parseJsonSchemaToOptions(
   }
 
   const flattenedSchema = await registry.flatten(schema).toPromise();
+  // TODO(RXJS): temporary assert to avoid adding rxjs dependency.
+  assert(flattenedSchema);
   json.schema.visitJsonSchema(flattenedSchema, visitor);
 
   // Sort by positional and name.
