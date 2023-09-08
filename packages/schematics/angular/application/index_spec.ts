@@ -377,7 +377,7 @@ describe('Application Schematic', () => {
       expect(prj.root).toEqual('');
       const buildOpt = prj.architect.build.options;
       expect(buildOpt.index).toEqual('src/index.html');
-      expect(buildOpt.main).toEqual('src/main.ts');
+      expect(buildOpt.browser).toEqual('src/main.ts');
       expect(buildOpt.polyfills).toEqual(['zone.js']);
       expect(buildOpt.tsConfig).toEqual('tsconfig.app.json');
 
@@ -466,7 +466,7 @@ describe('Application Schematic', () => {
       expect(project.root).toEqual('foo');
       const buildOpt = project.architect.build.options;
       expect(buildOpt.index).toEqual('foo/src/index.html');
-      expect(buildOpt.main).toEqual('foo/src/main.ts');
+      expect(buildOpt.browser).toEqual('foo/src/main.ts');
       expect(buildOpt.polyfills).toEqual(['zone.js']);
       expect(buildOpt.tsConfig).toEqual('foo/tsconfig.app.json');
 
