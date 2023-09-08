@@ -8,6 +8,28 @@ const snapshots = require('../../../ng-snapshot/package.json');
 
 export default async function () {
   await ng('generate', 'app', 'test-project-two', '--routing', '--standalone', '--skip-install');
+
+  // Setup webpack builder if esbuild is not requested on the commandline
+  const useWebpackBuilder = !getGlobalVariable('argv')['esbuild'];
+  if (useWebpackBuilder) {
+    await updateJsonFile('angular.json', (json) => {
+      const build = json['projects']['test-project-two']['architect']['build'];
+      build.builder = '@angular-devkit/build-angular:browser';
+      build.options = {
+        ...build.options,
+        main: build.options.browser,
+        browser: undefined,
+      };
+
+      build.configurations.development = {
+        ...build.configurations.development,
+        vendorChunk: true,
+        namedChunks: true,
+        buildOptimizer: false,
+      };
+    });
+  }
+
   await ng('generate', 'app-shell', '--project', 'test-project-two');
 
   const isSnapshotBuild = getGlobalVariable('argv')['ng-snapshots'];
@@ -30,9 +52,13 @@ export default async function () {
     }
   }
 
-  await ng('run', 'test-project-two:app-shell:development');
-  await expectFileToMatch('dist/test-project-two/browser/index.html', 'app-shell works!');
-
-  await ng('run', 'test-project-two:app-shell');
-  await expectFileToMatch('dist/test-project-two/browser/index.html', 'app-shell works!');
+  if (useWebpackBuilder) {
+    await ng('run', 'test-project-two:app-shell:development');
+    await expectFileToMatch('dist/test-project-two/browser/index.html', 'app-shell works!');
+    await ng('run', 'test-project-two:app-shell');
+    await expectFileToMatch('dist/test-project-two/browser/index.html', 'app-shell works!');
+  } else {
+    await ng('build', 'test-project-two');
+    await expectFileToMatch('dist/test-project-two/index.html', 'app-shell works!');
+  }
 }

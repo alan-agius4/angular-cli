@@ -1,12 +1,8 @@
-import { getGlobalVariable } from '../../../utils/env';
 import { writeMultipleFiles, expectFileToMatch, replaceInFile, createDir } from '../../../utils/fs';
 import { ng } from '../../../utils/process';
 import { updateJsonFile } from '../../../utils/project';
 
 export default async function () {
-  // esbuild currently only supports Sass
-  const esbuild = getGlobalVariable('argv')['esbuild'];
-
   await createDir('src/style-paths');
   await writeMultipleFiles({
     'src/style-paths/_variables.scss': '$primary-color: red;',
@@ -32,15 +28,15 @@ export default async function () {
   await replaceInFile(
     'src/app/app.component.ts',
     `'./app.component.css\'`,
-    `'./app.component.scss'` + (esbuild ? '' : `, './app.component.less'`),
+    `'./app.component.scss', './app.component.less'`,
   );
 
   await updateJsonFile('angular.json', (workspaceJson) => {
     const appArchitect = workspaceJson.projects['test-project'].architect;
-    appArchitect.build.options.styles = [{ input: 'src/styles.scss' }];
-    if (!esbuild) {
-      appArchitect.build.options.styles.push({ input: 'src/styles.less' });
-    }
+    appArchitect.build.options.styles = [
+      { input: 'src/styles.scss' },
+      { input: 'src/styles.less' },
+    ];
     appArchitect.build.options.stylePreprocessorOptions = {
       includePaths: ['src/style-paths'],
     };
