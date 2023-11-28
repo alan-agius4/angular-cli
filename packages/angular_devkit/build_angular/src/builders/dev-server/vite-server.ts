@@ -570,7 +570,12 @@ export async function setupServer(
             if (assetSourcePath !== undefined) {
               // The encoding needs to match what happens in the vite static middleware.
               // ref: https://github.com/vitejs/vite/blob/d4f13bd81468961c8c926438e815ab6b1c82735e/packages/vite/src/node/server/middlewares/static.ts#L163
-              req.url = `/@fs/${encodeURI(assetSourcePath)}`;
+              let { servePath = '' } = serverOptions;
+              if (servePath) {
+                servePath = addLeadingSlash(servePath);
+              }
+
+              req.url = `${serverOptions.servePath}/@fs/${encodeURI(assetSourcePath)}`;
               next();
 
               return;
@@ -778,17 +783,18 @@ async function loadViteClientCode(file: string) {
   return contents;
 }
 
-function pathnameWithoutServePath(url: string, serverOptions: NormalizedDevServerOptions): string {
+function pathnameWithoutServePath(url: string, { servePath }: NormalizedDevServerOptions): string {
   const parsedUrl = new URL(url, 'http://localhost');
   let pathname = decodeURIComponent(parsedUrl.pathname);
-  if (serverOptions.servePath && pathname.startsWith(serverOptions.servePath)) {
-    pathname = pathname.slice(serverOptions.servePath.length);
-    if (pathname[0] !== '/') {
-      pathname = '/' + pathname;
-    }
+  if (servePath && pathname.startsWith(servePath)) {
+    pathname = addLeadingSlash(pathname.slice(servePath.length));
   }
 
   return pathname;
+}
+
+function addLeadingSlash(value: string): string {
+  return value.charAt(0) === '/' ? value : '/' + value;
 }
 
 type ViteEsBuildPlugin = NonNullable<
