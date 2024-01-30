@@ -81,6 +81,7 @@ export function generateEsbuildBuildStatsTable(
   showTotalSize: boolean,
   showEstimatedTransferSize: boolean,
   budgetFailures?: BudgetCalculatorResult[],
+  verbose?: boolean,
 ): string {
   const bundleInfo = generateBuildStatsData(
     browserStats,
@@ -88,6 +89,7 @@ export function generateEsbuildBuildStatsTable(
     showTotalSize,
     showEstimatedTransferSize,
     budgetFailures,
+    verbose,
   );
 
   if (serverStats.length) {
@@ -100,7 +102,7 @@ export function generateEsbuildBuildStatsTable(
 
     bundleInfo.push(
       [m('Server bundles')],
-      ...generateBuildStatsData(serverStats, colors, false, false, undefined),
+      ...generateBuildStatsData(serverStats, colors, false, false, undefined, verbose),
     );
   }
 
@@ -120,6 +122,7 @@ export function generateBuildStatsTable(
     showTotalSize,
     showEstimatedTransferSize,
     budgetFailures,
+    true,
   );
 
   return generateTableText(bundleInfo, colors);
@@ -131,6 +134,7 @@ function generateBuildStatsData(
   showTotalSize: boolean,
   showEstimatedTransferSize: boolean,
   budgetFailures?: BudgetCalculatorResult[],
+  verbose?: boolean,
 ): (string | number)[][] {
   if (data.length === 0) {
     return [];
@@ -159,7 +163,9 @@ function generateBuildStatsData(
   const changedLazyChunksStats: BundleStatsData[] = [];
 
   let initialTotalRawSize = 0;
+  let changedLazyChunksCount = 0;
   let initialTotalEstimatedTransferSize;
+  const maxLazyChunksWithoutBudgetFailures = 15;
 
   const budgets = new Map<string, string>();
   if (budgetFailures) {
@@ -222,17 +228,24 @@ function generateBuildStatsData(
         initialTotalEstimatedTransferSize += estimatedTransferSize;
       }
     } else {
-      changedLazyChunksStats.push(data);
+      if (
+        verbose ||
+        changedLazyChunksStats.length <= maxLazyChunksWithoutBudgetFailures ||
+        budgets.has(names) ||
+        budgets.has(files)
+      ) {
+        changedLazyChunksStats.push(data);
+      }
+
+      changedLazyChunksCount++;
     }
   }
 
   const bundleInfo: (string | number)[][] = [];
   const baseTitles = ['Names', 'Raw size'];
-  const tableAlign: ('l' | 'r')[] = ['l', 'l', 'r'];
 
   if (showEstimatedTransferSize) {
     baseTitles.push('Estimated transfer size');
-    tableAlign.push('r');
   }
 
   // Entry chunks
@@ -267,12 +280,22 @@ function generateBuildStatsData(
   // Lazy chunks
   if (changedLazyChunksStats.length) {
     bundleInfo.push(['Lazy chunk files', ...baseTitles].map(bold), ...changedLazyChunksStats);
+
+    if (changedLazyChunksCount > changedLazyChunksStats.length) {
+      bundleInfo.push([
+        dim(
+          `...and ${changedLazyChunksCount - changedLazyChunksStats.length} more lazy chunks files. ` +
+            'Use "--verbose" to show all the files.',
+        ),
+      ]);
+    }
   }
 
   return bundleInfo;
 }
 
 function generateTableText(bundleInfo: (string | number)[][], colors: boolean): string {
+  const skipText = (value: string) => value.includes('...and ');
   const longest: number[] = [];
   for (const item of bundleInfo) {
     for (let i = 0; i < item.length; i++) {
@@ -281,6 +304,10 @@ function generateTableText(bundleInfo: (string | number)[][], colors: boolean): 
       }
 
       const currentItem = item[i].toString();
+      if (skipText(currentItem)) {
+        continue;
+      }
+
       const currentLongest = (longest[i] ??= 0);
       const currentItemLength = removeColor(currentItem).length;
       if (currentLongest < currentItemLength) {
@@ -298,6 +325,10 @@ function generateTableText(bundleInfo: (string | number)[][], colors: boolean): 
       }
 
       const currentItem = item[i].toString();
+      if (skipText(currentItem)) {
+        continue;
+      }
+
       const currentItemLength = removeColor(currentItem).length;
       const stringPad = ' '.repeat(longest[i] - currentItemLength);
       // Last item is right aligned, thus we add the padding at the start.
