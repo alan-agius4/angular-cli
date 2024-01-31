@@ -12,6 +12,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import type { NormalizedApplicationBuildOptions } from '../../builders/application/options';
+import { colors } from '../../utils/color';
 import { allowMangle } from '../../utils/environment-options';
 import { createCompilerPlugin } from './angular/compiler-plugin';
 import { SourceFileCache } from './angular/source-file-cache';
@@ -329,6 +330,7 @@ function getEsBuildCommonOptions(options: NormalizedApplicationBuildOptions): Bu
     preserveSymlinks,
     jit,
     loaderExtensions,
+    jsonLogs,
   } = options;
 
   // Ensure unique hashes for i18n translation changes when using post-process inlining.
@@ -355,7 +357,7 @@ function getEsBuildCommonOptions(options: NormalizedApplicationBuildOptions): Bu
     resolveExtensions: ['.ts', '.tsx', '.mjs', '.js'],
     metafile: true,
     legalComments: options.extractLicenses ? 'none' : 'eof',
-    logLevel: options.verbose ? 'debug' : 'silent',
+    logLevel: options.verbose && !jsonLogs ? 'debug' : 'silent',
     minifyIdentifiers: optimizationOptions.scripts && allowMangle,
     minifySyntax: optimizationOptions.scripts,
     minifyWhitespace: optimizationOptions.scripts,
