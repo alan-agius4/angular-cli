@@ -5,16 +5,31 @@
 ```ts
 
 // @public
-export interface AngularServerAppManager {
+export class AngularAppEngine {
     getHeaders(request: Request): Readonly<Map<string, string>>;
     render(request: Request, requestContext?: unknown): Promise<Response | null>;
+    static ɵhooks: Hooks;
 }
 
 // @public
-export function destroyAngularAppEngine(): void;
+type HookName = keyof HooksMapping;
 
 // @public
-export function getOrCreateAngularAppEngine(): AngularServerAppManager;
+class Hooks {
+    has(name: HookName): boolean;
+    on<Hook extends HookName>(name: Hook, handler: HooksMapping[Hook]): void;
+}
+
+// @public
+interface HooksMapping {
+    // (undocumented)
+    'html:transform:pre': HtmlTransformHandler;
+}
+
+// @public
+type HtmlTransformHandler = (ctx: {
+    html: string;
+}) => string | Promise<string>;
 
 // (No @packageDocumentation comment for this package)
 
