@@ -179,8 +179,11 @@ export class AngularServerApp {
       return Response.redirect(new URL(redirectTo, url), (status as any) ?? 302);
     }
 
-    const { renderMode = isSsrMode ? RenderMode.Server : RenderMode.Prerender, headers } =
-      matchedRoute;
+    const {
+      renderMode = isSsrMode ? RenderMode.Server : RenderMode.Prerender,
+      headers,
+      preload,
+    } = matchedRoute;
 
     const platformProviders: StaticProvider[] = [];
     let responseInit: ResponseInit | undefined;
@@ -213,7 +216,12 @@ export class AngularServerApp {
         );
       } else if (renderMode === RenderMode.Client) {
         // Serve the client-side rendered version if the route is configured for CSR.
-        return new Response(await this.assets.getServerAsset('index.csr.html'), responseInit);
+        const html = appendPreloadHintsToHtml(
+          await this.assets.getServerAsset('index.csr.html'),
+          preload,
+        );
+
+        return new Response(html, responseInit);
       }
     }
 
@@ -279,6 +287,8 @@ export class AngularServerApp {
       }
     }
 
+    html = appendPreloadHintsToHtml(html, preload);
+
     return new Response(html, responseInit);
   }
 }
@@ -311,4 +321,19 @@ export function destroyAngularServerApp(): void {
   }
 
   angularServerApp = undefined;
+}
+
+function appendPreloadHintsToHtml(html: string, preload: readonly string[] | undefined): string {
+  if (!preload?.length) {
+    return html;
+  }
+
+  const preloadLinks = preload.map((p) => `<link rel="modulepreload" href="${p}" />\n`).join('');
+  const bodyCloseIndex = html.lastIndexOf('</body>');
+
+  if (bodyCloseIndex !== -1) {
+    html = html.slice(0, bodyCloseIndex) + preloadLinks + html.slice(bodyCloseIndex);
+  }
+
+  return html;
 }

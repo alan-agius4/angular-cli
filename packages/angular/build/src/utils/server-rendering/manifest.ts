@@ -6,6 +6,7 @@
  * found in the LICENSE file at https://angular.dev/license
  */
 
+import type { Metafile } from 'esbuild';
 import {
   INDEX_HTML_CSR,
   INDEX_HTML_SERVER,
@@ -14,6 +15,7 @@ import {
 } from '../../builders/application/options';
 import type { BuildOutputFile } from '../../tools/esbuild/bundler-context';
 import type { PrerenderedRoutesRecord } from '../../tools/esbuild/bundler-execution-result';
+import { extname } from 'path';
 
 export const SERVER_APP_MANIFEST_FILENAME = 'angular-app-manifest.mjs';
 export const SERVER_APP_ENGINE_MANIFEST_FILENAME = 'angular-app-engine-manifest.mjs';
@@ -122,6 +124,8 @@ export default {
  * server-side rendering and routing.
  * @param locale - An optional string representing the locale or language code to be used for
  * the application, helping with localization and rendering content specific to the locale.
+ * @param initialFiles - A list of initial files that preload tags have already been added for.
+ * @param metafile - An esbuild metafile object.
  *
  * @returns A string representing the content of the SSR server manifest for the Node.js
  * environment.
@@ -132,6 +136,8 @@ export function generateAngularServerAppManifest(
   inlineCriticalCss: boolean,
   routes: readonly unknown[] | undefined,
   locale: string | undefined,
+  initialFiles: string[],
+  metafile: Metafile,
 ): string {
   const serverAssetsContent: string[] = [];
   for (const file of [...additionalHtmlOutputFiles.values(), ...outputFiles]) {
@@ -144,15 +150,71 @@ export function generateAngularServerAppManifest(
     }
   }
 
+  const chunksMappings = routes?.length
+    ? undefined
+    : JSON.stringify(
+        Object.entries(Object.fromEntries(generateLazyLoadedFilesMappings(metafile, initialFiles))),
+        undefined,
+        2,
+      );
+
   const manifestContent = `
 export default {
   bootstrap: () => import('./main.server.mjs').then(m => m.default),
   inlineCriticalCss: ${inlineCriticalCss},
   routes: ${JSON.stringify(routes, undefined, 2)},
   assets: new Map([${serverAssetsContent.join(', \n')}]),
+  chunksMappings: ${chunksMappings !== undefined ? `new Map(${chunksMappings})` : undefined},
   locale: ${locale !== undefined ? `'${locale}'` : undefined},
 };
 `;
 
   return manifestContent;
+}
+
+function generateLazyLoadedFilesMappings(
+  metafile: Metafile,
+  initialFiles: string[],
+): Map<string, string[]> {
+  const initialFilesSet = new Set(initialFiles);
+  const bundlesReverseLookup = new Map</* mjs file (server bundle) */ string, string[]>();
+  const entryPointToBundles = new Map<
+    string,
+    { js: string[] | undefined; mjs: string | undefined }
+  >();
+
+  for (const [fileName, { entryPoint, exports, imports }] of Object.entries(metafile.outputs)) {
+    const extension = extname(fileName);
+
+    // Skip files that don't have an entryPoint, no exports, or are not .js or .mjs
+    if (!entryPoint || exports?.length < 1 || (extension !== '.js' && extension !== '.mjs')) {
+      continue;
+    }
+
+    const data = entryPointToBundles.get(entryPoint) ?? { js: undefined, mjs: undefined };
+    if (extension === '.js') {
+      data.js = [
+        fileName,
+        ...imports
+          .filter(
+            ({ kind, external, path }) =>
+              kind === 'import-statement' && !external && !initialFilesSet.has(path),
+          )
+          .map(({ path }) => path),
+      ];
+    } else {
+      data.mjs = fileName;
+    }
+
+    entryPointToBundles.set(entryPoint, data);
+  }
+
+  // Populate resultedLookup with mjs as key and js as value
+  for (const { js, mjs } of entryPointToBundles.values()) {
+    if (mjs && js?.length) {
+      bundlesReverseLookup.set(mjs, js);
+    }
+  }
+
+  return bundlesReverseLookup;
 }

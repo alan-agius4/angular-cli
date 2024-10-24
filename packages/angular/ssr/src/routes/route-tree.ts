@@ -66,6 +66,11 @@ export interface RouteTreeNodeMetadata {
    * If not provided, the default rendering mode for the application will be used.
    */
   renderMode?: RenderMode;
+
+  /**
+   * A list of resource that should be preloaded by the browser.
+   */
+  preload?: readonly string[];
 }
 
 /**

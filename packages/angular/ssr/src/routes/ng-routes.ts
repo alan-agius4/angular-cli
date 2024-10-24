@@ -30,6 +30,8 @@ import { joinUrlParts, stripLeadingSlash } from '../utils/url';
 import { PrerenderFallback, RenderMode, SERVER_ROUTES_CONFIG, ServerRoute } from './route-config';
 import { RouteTree, RouteTreeNodeMetadata } from './route-tree';
 
+const IMPORT_REGEXP = /[import|__vite_ssr_dynamic_import__]\(['"]\.?\/(.+\.mjs)['"]\)/;
+
 /**
  * Regular expression to match segments preceded by a colon in a string.
  */
@@ -104,6 +106,8 @@ async function* traverseRoutesConfig(options: {
   serverConfigRouteTree: RouteTree<ServerConfigRouteTreeAdditionalMetadata> | undefined;
   invokeGetPrerenderParams: boolean;
   includePrerenderFallbackRoutes: boolean;
+  chunksMappings: ReadonlyMap<string, readonly string[]> | undefined;
+  parentPreloads?: readonly string[];
 }): AsyncIterableIterator<RouteTreeNodeMetadata | { error: string }> {
   const {
     routes,
@@ -111,13 +115,15 @@ async function* traverseRoutesConfig(options: {
     parentInjector,
     parentRoute,
     serverConfigRouteTree,
+    chunksMappings,
+    parentPreloads,
     invokeGetPrerenderParams,
     includePrerenderFallbackRoutes,
   } = options;
 
   for (const route of routes) {
     try {
-      const { path = '', redirectTo, loadChildren, children } = route;
+      const { path = '', redirectTo, loadChildren, loadComponent, children } = route;
       const currentRoutePath = joinUrlParts(parentRoute, path);
 
       // Get route metadata from the server config route tree, if available
@@ -139,10 +145,23 @@ async function* traverseRoutesConfig(options: {
 
       const metadata: ServerConfigRouteTreeNodeMetadata = {
         ...matchedMetaData,
+        preload: parentPreloads,
         route: currentRoutePath,
       };
 
       delete metadata.presentInClientRouter;
+
+      if (loadComponent && chunksMappings) {
+        const serverChunkName = IMPORT_REGEXP.exec(loadComponent.toString())?.[1];
+        if (serverChunkName) {
+          const preload = chunksMappings.get(serverChunkName);
+          if (preload?.length) {
+            metadata.preload = Array.from(
+              new Set([...(metadata.preload ?? []), ...preload]),
+            ) as readonly string[];
+          }
+        }
+      }
 
       // Handle redirects
       if (typeof redirectTo === 'string') {
@@ -174,11 +193,24 @@ async function* traverseRoutesConfig(options: {
           ...options,
           routes: children,
           parentRoute: currentRoutePath,
+          parentPreloads: metadata.preload,
         });
       }
 
       // Load and process lazy-loaded child routes
       if (loadChildren) {
+        if (loadChildren && chunksMappings) {
+          const serverChunkName = IMPORT_REGEXP.exec(loadChildren.toString())?.[1];
+          if (serverChunkName) {
+            const preload = chunksMappings.get(serverChunkName);
+            if (preload?.length) {
+              metadata.preload = Array.from(
+                new Set([...(metadata.preload ?? []), ...preload]),
+              ) as readonly string[];
+            }
+          }
+        }
+
         const loadedChildRoutes = await loadChildrenHelper(
           route,
           compiler,
@@ -192,6 +224,7 @@ async function* traverseRoutesConfig(options: {
             routes: childRoutes,
             parentInjector: injector,
             parentRoute: currentRoutePath,
+            parentPreloads: metadata.preload,
           });
         }
       }
@@ -364,6 +397,7 @@ function buildServerConfigRouteTree(serverRoutesConfig: ServerRoute[]): {
  * @param invokeGetPrerenderParams - A boolean flag indicating whether to invoke `getPrerenderParams` for parameterized SSG routes
  * to handle prerendering paths. Defaults to `false`.
  * @param includePrerenderFallbackRoutes - A flag indicating whether to include fallback routes in the result. Defaults to `true`.
+ * @param chunksMappings - Maps server bundle filenames to the associated JavaScript browser bundles.
  *
  * @returns A promise that resolves to an object of type `AngularRouterConfigResult` or errors.
  */
@@ -373,6 +407,7 @@ export async function getRoutesFromAngularRouterConfig(
   url: URL,
   invokeGetPrerenderParams = false,
   includePrerenderFallbackRoutes = true,
+  chunksMappings: ReadonlyMap<string, readonly string[]> | undefined = undefined,
 ): Promise<AngularRouterConfigResult> {
   const { protocol, host } = url;
 
@@ -440,6 +475,7 @@ export async function getRoutesFromAngularRouterConfig(
         serverConfigRouteTree,
         invokeGetPrerenderParams,
         includePrerenderFallbackRoutes,
+        chunksMappings,
       });
 
       let seenAppShellRoute: string | undefined;
@@ -525,6 +561,7 @@ export async function extractRoutesAndCreateRouteTree(
     url,
     invokeGetPrerenderParams,
     includePrerenderFallbackRoutes,
+    manifest.chunksMappings,
   );
 
   for (const { route, ...metadata } of routes) {

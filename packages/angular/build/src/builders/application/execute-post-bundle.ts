@@ -6,6 +6,7 @@
  * found in the LICENSE file at https://angular.dev/license
  */
 
+import type { Metafile } from 'esbuild';
 import assert from 'node:assert';
 import {
   BuildOutputFile,
@@ -34,13 +35,16 @@ import { OutputMode } from './schema';
 
 /**
  * Run additional builds steps including SSG, AppShell, Index HTML file and Service worker generation.
+ * @param metafile An esbuild metafile object.
  * @param options The normalized application builder options used to create the build.
  * @param outputFiles The output files of an executed build.
  * @param assetFiles The assets of an executed build.
  * @param initialFiles A map containing initial file information for the executed build.
  * @param locale A language locale to insert in the index.html.
  */
+// eslint-disable-next-line max-lines-per-function
 export async function executePostBundleSteps(
+  metafile: Metafile,
   options: NormalizedApplicationBuildOptions,
   outputFiles: BuildOutputFile[],
   assetFiles: BuildOutputAsset[],
@@ -116,6 +120,8 @@ export async function executePostBundleSteps(
           optimizationOptions.styles.inlineCritical ?? false,
           undefined,
           locale,
+          Object.keys(initialFiles),
+          metafile,
         ),
         BuildOutputFileType.ServerApplication,
       ),
@@ -200,6 +206,8 @@ export async function executePostBundleSteps(
           optimizationOptions.styles.inlineCritical ?? false,
           serializableRouteTreeNodeForManifest,
           locale,
+          Object.keys(initialFiles),
+          metafile,
         ),
       );
     }

@@ -95,6 +95,14 @@ export interface AngularAppManifest {
    * the application, aiding with localization and rendering content specific to the locale.
    */
   readonly locale?: string;
+
+  /**
+   * Maps server bundle filenames to the associated JavaScript browser bundles that should be preloaded.
+   *
+   * - **Key**: The filename of the server bundle in `.mjs` format.
+   * - **Value**: An array of corresponding JavaScript browser bundles that are intended to be preloaded when the server bundle is loaded.
+   */
+  readonly chunksMappings?: ReadonlyMap<string, readonly string[]>;
 }
 
 /**
