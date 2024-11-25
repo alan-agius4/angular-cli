@@ -25,6 +25,18 @@ import {
 import { RouteTree, RouteTreeNodeMetadata } from './route-tree';
 
 /**
+ * The maximum number of module preload link elements that should be added for
+ * initial scripts.
+ */
+const MODULE_PRELOAD_MAX = 10;
+
+/**
+ * Regular expression used to match dynamic import statements in the form of:
+ * `import('...')` or `__vite_ssr_dynamic_import__('...')`.
+ */
+const IMPORT_REGEXP = /[import|__vite_ssr_dynamic_import__]\(\s*['"]\.?\/(.+\.mjs)['"]\s*\)/;
+
+/**
  * Regular expression to match segments preceded by a colon in a string.
  */
 const URL_PARAMETER_REGEXP = /(?<!\\):([^/]+)/g;
@@ -86,6 +98,8 @@ interface AngularRouterConfigResult {
   appShellRoute?: string;
 }
 
+type ServerToBrowserMappings = AngularAppManifest['serverToBrowserMappings'];
+
 /**
  * Traverses an array of route configurations to generate route tree node metadata.
  *
@@ -103,6 +117,8 @@ async function* traverseRoutesConfig(options: {
   serverConfigRouteTree: RouteTree<ServerConfigRouteTreeAdditionalMetadata> | undefined;
   invokeGetPrerenderParams: boolean;
   includePrerenderFallbackRoutes: boolean;
+  serverToBrowserMappings: ServerToBrowserMappings | undefined;
+  parentPreloads?: readonly string[];
 }): AsyncIterableIterator<RouteTreeNodeMetadata | { error: string }> {
   const {
     routes,
@@ -110,13 +126,15 @@ async function* traverseRoutesConfig(options: {
     parentInjector,
     parentRoute,
     serverConfigRouteTree,
+    serverToBrowserMappings,
+    parentPreloads,
     invokeGetPrerenderParams,
     includePrerenderFallbackRoutes,
   } = options;
 
   for (const route of routes) {
     try {
-      const { path = '', redirectTo, loadChildren, children } = route;
+      const { path = '', redirectTo, loadChildren, loadComponent, children } = route;
       const currentRoutePath = joinUrlParts(parentRoute, path);
 
       // Get route metadata from the server config route tree, if available
@@ -139,13 +157,17 @@ async function* traverseRoutesConfig(options: {
       const metadata: ServerConfigRouteTreeNodeMetadata = {
         renderMode: RenderMode.Prerender,
         ...matchedMetaData,
+        preload: parentPreloads,
         // Match Angular router behavior
         // ['one', 'two', ''] -> 'one/two/'
         // ['one', 'two', 'three'] -> 'one/two/three'
         route: path === '' ? addTrailingSlash(currentRoutePath) : currentRoutePath,
+        presentInClientRouter: undefined,
       };
 
-      delete metadata.presentInClientRouter;
+      if (serverToBrowserMappings) {
+        appendPreloadToMetadata(loadComponent, serverToBrowserMappings, metadata, true);
+      }
 
       if (metadata.renderMode === RenderMode.Prerender) {
         // Handle SSG routes
@@ -179,11 +201,18 @@ async function* traverseRoutesConfig(options: {
           ...options,
           routes: children,
           parentRoute: currentRoutePath,
+          parentPreloads: metadata.preload,
         });
       }
 
       // Load and process lazy-loaded child routes
       if (loadChildren) {
+        if (serverToBrowserMappings) {
+          // Do not add preloads for dynamic imports with `loadChildren`.
+          // Otherwise it will caise all files to be preloaded for every lazy-loaded route,
+          appendPreloadToMetadata(loadChildren, serverToBrowserMappings, metadata, false);
+        }
+
         const loadedChildRoutes = await loadChildrenHelper(
           route,
           compiler,
@@ -197,6 +226,7 @@ async function* traverseRoutesConfig(options: {
             routes: childRoutes,
             parentInjector: injector,
             parentRoute: currentRoutePath,
+            parentPreloads: metadata.preload,
           });
         }
       }
@@ -205,6 +235,48 @@ async function* traverseRoutesConfig(options: {
         error: `Error processing route '${stripLeadingSlash(route.path ?? '')}': ${(error as Error).message}`,
       };
     }
+  }
+}
+
+/**
+ * Appends preload information to the metadata based on the provided load statement and chunk mappings.
+ *
+ * This function checks if a valid load statement and chunk mappings are provided. If so, it extracts
+ * the server chunk name from the load statement and retrieves corresponding preload entries from
+ * the chunk mappings. The retrieved entries are then added to the metadata's preload list, ensuring
+ * that there are no duplicate entries.
+ *
+ * @param loadStatement - The load statement from which to extract the server chunk name.
+ * @param serverToBrowserMappings - Maps server bundle filenames to the associated JavaScript browser bundles.
+ * @param metadata - The metadata object that will be modified to include the new preload entries.
+ *                  appendPreloadToMetadataIt must conform to the ServerConfigRouteTreeNodeMetadata type.
+ * @param includeDynamicImports - Whether to include preload information for dynamic imports.
+ */
+function appendPreloadToMetadata(
+  loadStatement: unknown,
+  serverToBrowserMappings: ServerToBrowserMappings,
+  metadata: ServerConfigRouteTreeNodeMetadata,
+  includeDynamicImports: boolean,
+): void {
+  if (!loadStatement || !serverToBrowserMappings) {
+    return;
+  }
+
+  const serverChunkName = IMPORT_REGEXP.exec(loadStatement.toString())?.[1];
+  if (!serverChunkName) {
+    return;
+  }
+
+  const preload = serverToBrowserMappings[serverChunkName];
+  if (preload?.length) {
+    // Merge existing preloads with new ones, ensuring uniqueness and limiting the
+    // total number to the maximum allowed.
+    const preloadPaths =
+      preload
+        .filter(({ dynamicImport }) => includeDynamicImports || !dynamicImport)
+        .map(({ path }) => path) ?? [];
+    const combinedPreloads = [...(metadata.preload ?? []), ...preloadPaths];
+    metadata.preload = Array.from(new Set(combinedPreloads)).slice(0, MODULE_PRELOAD_MAX);
   }
 }
 
@@ -390,6 +462,7 @@ function buildServerConfigRouteTree({ routes, appShellRoute }: ServerRoutesConfi
  * @param invokeGetPrerenderParams - A boolean flag indicating whether to invoke `getPrerenderParams` for parameterized SSG routes
  * to handle prerendering paths. Defaults to `false`.
  * @param includePrerenderFallbackRoutes - A flag indicating whether to include fallback routes in the result. Defaults to `true`.
+ * @param serverToBrowserMappings - Maps server bundle filenames to the associated JavaScript browser bundles.
  *
  * @returns A promise that resolves to an object of type `AngularRouterConfigResult` or errors.
  */
@@ -399,6 +472,7 @@ export async function getRoutesFromAngularRouterConfig(
   url: URL,
   invokeGetPrerenderParams = false,
   includePrerenderFallbackRoutes = true,
+  serverToBrowserMappings: ServerToBrowserMappings | undefined = undefined,
 ): Promise<AngularRouterConfigResult> {
   const { protocol, host } = url;
 
@@ -468,6 +542,7 @@ export async function getRoutesFromAngularRouterConfig(
         serverConfigRouteTree,
         invokeGetPrerenderParams,
         includePrerenderFallbackRoutes,
+        serverToBrowserMappings,
       });
 
       for await (const result of traverseRoutes) {
@@ -552,6 +627,7 @@ export async function extractRoutesAndCreateRouteTree(
     url,
     invokeGetPrerenderParams,
     includePrerenderFallbackRoutes,
+    manifest.serverToBrowserMappings,
   );
 
   for (const { route, ...metadata } of routes) {

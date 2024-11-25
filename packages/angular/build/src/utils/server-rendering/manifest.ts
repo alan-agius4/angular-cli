@@ -6,6 +6,7 @@
  * found in the LICENSE file at https://angular.dev/license
  */
 
+import type { Metafile } from 'esbuild';
 import { extname } from 'node:path';
 import {
   NormalizedApplicationBuildOptions,
@@ -13,9 +14,15 @@ import {
 } from '../../builders/application/options';
 import { type BuildOutputFile, BuildOutputFileType } from '../../tools/esbuild/bundler-context';
 import { createOutputFile } from '../../tools/esbuild/utils';
+import { shouldOptimizeChunks } from '../environment-options';
 
 export const SERVER_APP_MANIFEST_FILENAME = 'angular-app-manifest.mjs';
 export const SERVER_APP_ENGINE_MANIFEST_FILENAME = 'angular-app-engine-manifest.mjs';
+
+interface FilesMapping {
+  path: string;
+  dynamicImport: boolean;
+}
 
 const MAIN_SERVER_OUTPUT_FILENAME = 'main.server.mjs';
 
@@ -103,6 +110,9 @@ export default {
  * server-side rendering and routing.
  * @param locale - An optional string representing the locale or language code to be used for
  * the application, helping with localization and rendering content specific to the locale.
+ * @param initialFiles - A list of initial files that preload tags have already been added for.
+ * @param metafile - An esbuild metafile object.
+ * @param publicPath - The configured public path.
  *
  * @returns An object containing:
  * - `manifestContent`: A string of the SSR manifest content.
@@ -114,6 +124,9 @@ export function generateAngularServerAppManifest(
   inlineCriticalCss: boolean,
   routes: readonly unknown[] | undefined,
   locale: string | undefined,
+  initialFiles: Set<string>,
+  metafile: Metafile,
+  publicPath: string | undefined,
 ): {
   manifestContent: string;
   serverAssetsChunks: BuildOutputFile[];
@@ -138,15 +151,102 @@ export function generateAngularServerAppManifest(
     }
   }
 
+  // When routes have been extracted, mappings are no longer needed, as preloads will be included in the metadata.
+  // When shouldOptimizeChunks is enabled the metadata is no longer correct and thus we cannot generate the mappings.
+  const serverToBrowserMappings =
+    routes?.length || shouldOptimizeChunks
+      ? undefined
+      : generateLazyLoadedFilesMappings(metafile, initialFiles, publicPath);
+
   const manifestContent = `
 export default {
   bootstrap: () => import('./main.server.mjs').then(m => m.default),
   inlineCriticalCss: ${inlineCriticalCss},
+  locale: ${JSON.stringify(locale, undefined, 2)},
+  serverToBrowserMappings: ${JSON.stringify(serverToBrowserMappings, undefined, 2)},
   routes: ${JSON.stringify(routes, undefined, 2)},
   assets: new Map([\n${serverAssetsContent.join(', \n')}\n]),
-  locale: ${locale !== undefined ? `'${locale}'` : undefined},
 };
 `;
 
   return { manifestContent, serverAssetsChunks };
+}
+
+/**
+ * Generates a mapping of lazy-loaded files from a given metafile.
+ *
+ * This function processes the outputs of a metafile to create a mapping
+ * between MJS files (server bundles) and their corresponding JS files
+ * that should be lazily loaded. It filters out files that do not have
+ * an entry point, do not export any modules, or are not of the
+ * appropriate file extensions (.js or .mjs).
+ *
+ * @param metafile - An object containing metadata about the output files,
+ * including entry points, exports, and imports.
+ * @param initialFiles - A set of initial file names that are considered
+ * already loaded and should be excluded from the mapping.
+ * @param publicPath - The configured public path.
+ *
+ * @returns A record where the keys are MJS file names (server bundles) and
+ * the values are arrays of corresponding JS file names (browser bundles).
+ */
+function generateLazyLoadedFilesMappings(
+  metafile: Metafile,
+  initialFiles: Set<string>,
+  publicPath = '',
+): Record<string, FilesMapping[]> {
+  const entryPointToBundles = new Map<
+    string,
+    { js: FilesMapping[] | undefined; mjs: string | undefined }
+  >();
+
+  for (const [fileName, { entryPoint, exports, imports }] of Object.entries(metafile.outputs)) {
+    const extension = extname(fileName);
+
+    // Skip files that don't have an entryPoint, no exports, or are not .js or .mjs
+    if (!entryPoint || exports?.length < 1 || (extension !== '.js' && extension !== '.mjs')) {
+      continue;
+    }
+
+    const data = entryPointToBundles.get(entryPoint) ?? { js: undefined, mjs: undefined };
+    if (extension === '.js') {
+      const importedPaths: FilesMapping[] = [
+        {
+          path: `${publicPath}${fileName}`,
+          dynamicImport: false,
+        },
+      ];
+
+      for (const { kind, external, path } of imports) {
+        if (
+          external ||
+          initialFiles.has(path) ||
+          (kind !== 'dynamic-import' && kind !== 'import-statement')
+        ) {
+          continue;
+        }
+
+        importedPaths.push({
+          path: `${publicPath}${path}`,
+          dynamicImport: kind === 'dynamic-import',
+        });
+      }
+
+      data.js = importedPaths;
+    } else {
+      data.mjs = fileName;
+    }
+
+    entryPointToBundles.set(entryPoint, data);
+  }
+
+  const bundlesReverseLookup: Record<string, FilesMapping[]> = {};
+  // Populate resultedLookup with mjs as key and js as value
+  for (const { js, mjs } of entryPointToBundles.values()) {
+    if (mjs && js?.length) {
+      bundlesReverseLookup[mjs] = js;
+    }
+  }
+
+  return bundlesReverseLookup;
 }

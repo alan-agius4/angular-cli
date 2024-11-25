@@ -104,6 +104,34 @@ export interface AngularAppManifest {
    * the application, aiding with localization and rendering content specific to the locale.
    */
   readonly locale?: string;
+
+  /**
+   * Maps server bundle filenames to the corresponding JavaScript browser bundles for preloading.
+   *
+   * This mapping ensures that when a server bundle is loaded, the related browser bundles are preloaded.
+   * This helps to improve performance and reduce latency by ensuring that necessary resources are available
+   * when needed in the browser.
+   *
+   * - **Key**: The filename of the server bundle, typically in `.mjs` format. This represents the server-side
+   *   bundle that will be loaded.
+   * - **Value**: An array of objects where each object contains:
+   *   - `path`: The filename or URL of the related JavaScript browser bundle to be preloaded.
+   *   - `dynamicImport`: A boolean indicating whether the browser bundle is loaded via dynamic `import()`.
+   *     If `true`, the bundle is lazily loaded using a dynamic import, which may affect how it should be preloaded.
+   *
+   * Example:
+   * ```ts
+   * {
+   *   'server-bundle.mjs': [{ path: 'browser-bundle.js', dynamicImport: true }]
+   * }
+   * ```
+   * In this example, when the server bundle `server-bundle.mjs` is loaded, the browser bundle `browser-bundle.js`
+   * will be preloaded, and it will be dynamically loaded in the browser.
+   */
+  readonly serverToBrowserMappings?: Record<
+    string,
+    ReadonlyArray<{ path: string; dynamicImport: boolean }>
+  >;
 }
 
 /**

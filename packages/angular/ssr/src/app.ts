@@ -249,7 +249,7 @@ export class AngularServerApp {
     matchedRoute: RouteTreeNodeMetadata,
     requestContext?: unknown,
   ): Promise<Response | null> {
-    const { renderMode, headers, status } = matchedRoute;
+    const { renderMode, headers, status, preload } = matchedRoute;
 
     if (!this.allowStaticRouteRender && renderMode === RenderMode.Prerender) {
       return null;
@@ -284,7 +284,12 @@ export class AngularServerApp {
       );
     } else if (renderMode === RenderMode.Client) {
       // Serve the client-side rendered version if the route is configured for CSR.
-      return new Response(await this.assets.getServerAsset('index.csr.html').text(), responseInit);
+      const html = appendPreloadHintsToHtml(
+        await this.assets.getServerAsset('index.csr.html').text(),
+        preload,
+      );
+
+      return new Response(html, responseInit);
     }
 
     const {
@@ -351,6 +356,8 @@ export class AngularServerApp {
       }
     }
 
+    html = appendPreloadHintsToHtml(html, preload);
+
     return new Response(html, responseInit);
   }
 
@@ -411,4 +418,37 @@ export function destroyAngularServerApp(): void {
   }
 
   angularServerApp = undefined;
+}
+
+/**
+ * Appends module preload hints to an HTML string for specified JavaScript resources.
+ *appendPreloadToMetadata
+ * This function enhances the HTML by injecting `<link rel="modulepreload">` elements
+ * for each provided resource, allowing browsers to preload the specified JavaScript
+ * modules for better performance.
+ *
+ * @param html - The original HTML string to which preload hints will be added.
+ * @param preload - An array of URLs representing the JavaScript resources to preload.
+ *                  If `undefined` or empty, the original HTML string is returned unchanged.
+ * @returns The modified HTML string with the preload hints injected before the closing `</body>` tag.
+ *          If `</body>` is not found, the links are not added.
+ */
+function appendPreloadHintsToHtml(html: string, preload: readonly string[] | undefined): string {
+  if (!preload?.length) {
+    return html;
+  }
+
+  const bodyCloseIdx = html.lastIndexOf('</body>');
+  if (bodyCloseIdx === -1) {
+    return html;
+  }
+
+  // Note: Module preloads should be placed at the end before the closing body tag to avoid a performance penalty.
+  // Placing them earlier can cause the browser to prioritize downloading these modules
+  // over other critical page resources like images, CSS, and fonts.
+  return [
+    html.slice(0, bodyCloseIdx),
+    ...preload.map((val) => `<link rel="modulepreload" href="${val}">`),
+    html.slice(bodyCloseIdx),
+  ].join('\n');
 }

@@ -21,7 +21,8 @@ import { ServerRoute, provideServerRoutesConfig } from '../src/routes/route-conf
  *
  * @param routes - An array of route definitions to be used by the Angular Router.
  * @param serverRoutes - An array of ServerRoute definitions to be used for server-side rendering.
- * @param [baseHref='/'] - An optional base href to be used in the HTML template.
+ * @param baseHref - An optional base href to be used in the HTML template.
+ * @param additionalServerAssets - An optional dictionary of additional server assets.
  */
 export function setAngularAppTestingManifest(
   routes: Routes,
