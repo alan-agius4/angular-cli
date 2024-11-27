@@ -274,7 +274,10 @@ export function createServerMainCodeBundleOptions(
       ...getEsBuildServerCommonOptions(options),
       target,
       banner: {
-        js: `import './polyfills.server.mjs';`,
+        js: [
+          `import './polyfills.server.mjs';`,
+          `export const \u0275\u0275__import_meta_url__ = import.meta.url;`,
+        ].join(''),
       },
       entryPoints,
       supported: getFeatureSupport(target, zoneless),

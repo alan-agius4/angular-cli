@@ -13,6 +13,7 @@ import { loadEsmModule } from '../../../utils/load-esm';
 import { profileSync } from '../../esbuild/profiling';
 import { AngularHostOptions, createAngularCompilerHost } from '../angular-host';
 import { createJitResourceTransformer } from '../transformers/jit-resource-transformer';
+import { lazyRouteTransformer } from '../transformers/lazy-loading-import-path-transformer';
 import { createWorkerTransformer } from '../transformers/web-worker-transformer';
 import { AngularCompilation, DiagnosticModes, EmitFileResult } from './angular-compilation';
 
@@ -137,6 +138,7 @@ export class JitCompilation extends AngularCompilation {
         replaceResourcesTransform,
         constructorParametersDownlevelTransform,
         webWorkerTransform,
+        lazyRouteTransformer(),
       ],
     };
 

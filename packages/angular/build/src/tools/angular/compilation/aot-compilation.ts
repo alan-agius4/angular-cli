@@ -17,6 +17,7 @@ import {
   ensureSourceFileVersions,
 } from '../angular-host';
 import { replaceBootstrap } from '../transformers/jit-bootstrap-transformer';
+import { lazyRouteTransformer } from '../transformers/lazy-loading-import-path-transformer';
 import { createWorkerTransformer } from '../transformers/web-worker-transformer';
 import { AngularCompilation, DiagnosticModes, EmitFileResult } from './angular-compilation';
 
@@ -287,6 +288,7 @@ export class AotCompilation extends AngularCompilation {
     transformers.before ??= [];
     transformers.before.push(
       replaceBootstrap(() => typeScriptProgram.getProgram().getTypeChecker()),
+      lazyRouteTransformer(),
     );
     transformers.before.push(webWorkerTransform);
 

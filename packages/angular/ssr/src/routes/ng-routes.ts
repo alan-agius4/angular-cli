@@ -9,7 +9,11 @@
 import { APP_BASE_HREF, PlatformLocation } from '@angular/common';
 import { ApplicationRef, Compiler, Injector, runInInjectionContext, ɵConsole } from '@angular/core';
 import { INITIAL_CONFIG, platformServer } from '@angular/platform-server';
-import { Route, Router, ɵloadChildren as loadChildrenHelper } from '@angular/router';
+import {
+  Route as AngularRoute,
+  Router,
+  ɵloadChildren as loadChildrenHelper,
+} from '@angular/router';
 import { ServerAssets } from '../assets';
 import { Console } from '../console';
 import { AngularAppManifest, getAngularAppManifest } from '../manifest';
@@ -24,17 +28,15 @@ import {
 } from './route-config';
 import { RouteTree, RouteTreeNodeMetadata } from './route-tree';
 
+interface Route extends AngularRoute {
+  ɵimportPath?: () => Promise<string>;
+}
+
 /**
  * The maximum number of module preload link elements that should be added for
  * initial scripts.
  */
 const MODULE_PRELOAD_MAX = 10;
-
-/**
- * Regular expression used to match dynamic import statements in the form of:
- * `import('...')` or `__vite_ssr_dynamic_import__('...')`.
- */
-const IMPORT_REGEXP = /[import|__vite_ssr_dynamic_import__]\(\s*['"]\.?\/(.+\.mjs)['"]\s*\)/;
 
 /**
  * Regular expression to match segments preceded by a colon in a string.
@@ -134,7 +136,7 @@ async function* traverseRoutesConfig(options: {
 
   for (const route of routes) {
     try {
-      const { path = '', redirectTo, loadChildren, loadComponent, children } = route;
+      const { path = '', redirectTo, loadChildren, loadComponent, children, ɵimportPath } = route;
       const currentRoutePath = joinUrlParts(parentRoute, path);
 
       // Get route metadata from the server config route tree, if available
@@ -165,8 +167,9 @@ async function* traverseRoutesConfig(options: {
         presentInClientRouter: undefined,
       };
 
-      if (serverToBrowserMappings) {
-        appendPreloadToMetadata(loadComponent, serverToBrowserMappings, metadata, true);
+      if (serverToBrowserMappings && ɵimportPath) {
+        const importPath = await ɵimportPath();
+        appendPreloadToMetadata(importPath, serverToBrowserMappings, metadata, true);
       }
 
       if (metadata.renderMode === RenderMode.Prerender) {
@@ -207,10 +210,11 @@ async function* traverseRoutesConfig(options: {
 
       // Load and process lazy-loaded child routes
       if (loadChildren) {
-        if (serverToBrowserMappings) {
+        if (serverToBrowserMappings && ɵimportPath) {
+          const importPath = await ɵimportPath();
           // Do not add preloads for dynamic imports with `loadChildren`.
           // Otherwise it will caise all files to be preloaded for every lazy-loaded route,
-          appendPreloadToMetadata(loadChildren, serverToBrowserMappings, metadata, false);
+          appendPreloadToMetadata(importPath, serverToBrowserMappings, metadata, false);
         }
 
         const loadedChildRoutes = await loadChildrenHelper(
@@ -246,28 +250,27 @@ async function* traverseRoutesConfig(options: {
  * the chunk mappings. The retrieved entries are then added to the metadata's preload list, ensuring
  * that there are no duplicate entries.
  *
- * @param loadStatement - The load statement from which to extract the server chunk name.
+ * @param serverChunkPath - The server chunk path.
  * @param serverToBrowserMappings - Maps server bundle filenames to the associated JavaScript browser bundles.
  * @param metadata - The metadata object that will be modified to include the new preload entries.
  *                  appendPreloadToMetadataIt must conform to the ServerConfigRouteTreeNodeMetadata type.
  * @param includeDynamicImports - Whether to include preload information for dynamic imports.
  */
 function appendPreloadToMetadata(
-  loadStatement: unknown,
+  serverChunkPath: string,
   serverToBrowserMappings: ServerToBrowserMappings,
   metadata: ServerConfigRouteTreeNodeMetadata,
   includeDynamicImports: boolean,
 ): void {
-  if (!loadStatement || !serverToBrowserMappings) {
+  if (!serverToBrowserMappings) {
     return;
   }
 
-  const serverChunkName = IMPORT_REGEXP.exec(loadStatement.toString())?.[1];
-  if (!serverChunkName) {
-    return;
-  }
-
+  // Split the path by either forward or backward slashes to get the file name.
+  const parts = serverChunkPath.split(/[\/\\]/);
+  const serverChunkName = parts[parts.length - 1];
   const preload = serverToBrowserMappings[serverChunkName];
+
   if (preload?.length) {
     // Merge existing preloads with new ones, ensuring uniqueness and limiting the
     // total number to the maximum allowed.
