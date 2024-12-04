@@ -1,6 +1,10 @@
 import assert from 'node:assert';
 import { setTimeout } from 'node:timers/promises';
-import { execAndWaitForOutputToMatch, ng, waitForAnyProcessOutputToMatch } from '../../utils/process';
+import {
+  execAndWaitForOutputToMatch,
+  ng,
+  waitForAnyProcessOutputToMatch,
+} from '../../utils/process';
 import { installWorkspacePackages, uninstallPackage } from '../../utils/packages';
 import { useSha } from '../../utils/project';
 import { getGlobalVariable } from '../../utils/env';
