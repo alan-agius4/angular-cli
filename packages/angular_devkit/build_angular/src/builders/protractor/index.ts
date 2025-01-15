@@ -118,7 +118,7 @@ export async function execute(
       const overrides = {
         watch: false,
         liveReload: false,
-      } as DevServerBuilderOptions & json.JsonObject;
+      } as DevServerBuilderOptions;
 
       if (options.host !== undefined) {
         overrides.host = options.host;

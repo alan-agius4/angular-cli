@@ -13,8 +13,8 @@ import { JasmineBuilderHarness, host, setupApplicationTarget } from './setup';
 
 const optionSchemaCache = new Map<string, json.schema.JsonSchema>();
 
-export function describeServeBuilder<T>(
-  builderHandler: BuilderHandlerFn<T & json.JsonObject>,
+export function describeServeBuilder<T extends json.JsonObject = json.JsonObject>(
+  builderHandler: BuilderHandlerFn<T>,
   options: { name?: string; schemaPath: string },
   specDefinitions: (
     harness: JasmineBuilderHarness<T>,

@@ -339,7 +339,7 @@ export interface SourceMapObject {
 export type SourceMapUnion = boolean | SourceMapObject;
 
 // @public (undocumented)
-export type SSRDevServerBuilderOptions = Schema & json.JsonObject;
+export type SSRDevServerBuilderOptions = Schema;
 
 // @public (undocumented)
 export type SSRDevServerBuilderOutput = BuilderOutput & {
