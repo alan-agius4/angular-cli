@@ -242,7 +242,9 @@ export async function executeBuild(
 
   // Override auto-CSP settings if we are serving through Vite middleware.
   if (context.builder.builderName === 'dev-server' && options.security) {
-    options.security.autoCsp = false;
+    options.security = {
+      autoCsp: undefined,
+    };
   }
 
   // Perform i18n translation inlining if enabled
