@@ -20,7 +20,7 @@
   "dependencies": {
     "@ampproject/remapping": "2.3.0",
     "@angular-devkit/architect": "workspace:0.0.0-EXPERIMENTAL-PLACEHOLDER",
-    "@babel/core": "7.26.7",
+    "@babel/core": "7.26.8",
     "@babel/helper-annotate-as-pure": "7.25.9",
     "@babel/helper-split-export-declaration": "7.24.7",
     "@babel/plugin-syntax-import-attributes": "7.26.0",
@@ -28,7 +28,7 @@
     "@vitejs/plugin-basic-ssl": "1.2.0",
     "beasties": "0.2.0",
     "browserslist": "^4.23.0",
-    "esbuild": "0.24.2",
+    "esbuild": "0.25.0",
     "fast-glob": "3.3.3",
     "https-proxy-agent": "7.0.6",
     "istanbul-lib-instrument": "6.0.3",
@@ -38,14 +38,14 @@
     "parse5-html-rewriting-stream": "7.0.0",
     "picomatch": "4.0.2",
     "piscina": "4.8.0",
-    "rollup": "4.34.3",
-    "sass": "1.83.4",
+    "rollup": "4.34.6",
+    "sass": "1.84.0",
     "semver": "7.7.1",
     "vite": "6.1.0",
     "watchpack": "2.4.2"
   },
   "optionalDependencies": {
-    "lmdb": "3.2.4"
+    "lmdb": "3.2.6"
   },
   "devDependencies": {
     "@angular/ssr": "workspace:*",

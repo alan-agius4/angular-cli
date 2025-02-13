@@ -841,6 +841,9 @@ export async function setupServer(
           ? (proxy ?? {})
           : proxy,
       cors: {
+        // This will add the header `Access-Control-Allow-Origin: http://example.com`,
+        // where `http://example.com` is the requesting origin.
+        origin: true,
         // Allow preflight requests to be proxied.
         preflightContinue: true,
       },
@@ -898,7 +901,7 @@ export async function setupServer(
         outputFiles,
         templateUpdates,
         external: externalMetadata.explicitBrowser,
-        skipViteClient: serverOptions.liveReload === false && serverOptions.hmr === false,
+        disableViteTransport: !serverOptions.liveReload,
       }),
     ],
     // Browser only optimizeDeps. (This does not run for SSR dependencies).
