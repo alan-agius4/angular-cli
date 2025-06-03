@@ -32,6 +32,7 @@ import { prerenderPages } from '../../utils/server-rendering/prerender';
 import { augmentAppWithServiceWorkerEsbuild } from '../../utils/service-worker';
 import { INDEX_HTML_CSR, INDEX_HTML_SERVER, NormalizedApplicationBuildOptions } from './options';
 import { OutputMode } from './schema';
+import { runNitro } from '../../tools/nitro/nitro';
 
 /**
  * Run additional builds steps including SSG, AppShell, Index HTML file and Service worker generation.
@@ -138,89 +139,93 @@ export async function executePostBundleSteps(
 
   // Pre-render (SSG) and App-shell
   // If localization is enabled, prerendering is handled in the inlining process.
-  if (
-    !partialSSRBuild &&
-    (prerenderOptions || appShellOptions || (outputMode && serverEntryPoint)) &&
-    !allErrors.length
-  ) {
-    assert(
-      indexHtmlOptions,
-      'The "index" option is required when using the "ssg" or "appShell" options.',
-    );
+  // if (
+  //   !partialSSRBuild &&
+  //   (prerenderOptions || appShellOptions || (outputMode && serverEntryPoint)) &&
+  //   !allErrors.length
+  // ) {
+  //   assert(
+  //     indexHtmlOptions,
+  //     'The "index" option is required when using the "ssg" or "appShell" options.',
+  //   );
 
-    const { output, warnings, errors, serializableRouteTreeNode } = await prerenderPages(
-      workspaceRoot,
-      baseHref,
-      appShellOptions,
-      prerenderOptions,
-      [...outputFiles, ...additionalOutputFiles],
-      assetFiles,
-      outputMode,
-      sourcemapOptions.scripts,
-      maxWorkers,
-    );
+  //   const { output, warnings, errors, serializableRouteTreeNode } = await prerenderPages(
+  //     workspaceRoot,
+  //     baseHref,
+  //     appShellOptions,
+  //     prerenderOptions,
+  //     [...outputFiles, ...additionalOutputFiles],
+  //     assetFiles,
+  //     outputMode,
+  //     sourcemapOptions.scripts,
+  //     maxWorkers,
+  //   );
 
-    allErrors.push(...errors);
-    allWarnings.push(...warnings);
+  //   allErrors.push(...errors);
+  //   allWarnings.push(...warnings);
 
-    const indexHasBeenPrerendered = output[indexHtmlOptions.output];
-    for (const [path, { content, appShellRoute }] of Object.entries(output)) {
-      // Update the index contents with the app shell under these conditions:
-      // - Replace 'index.html' with the app shell only if it hasn't been prerendered yet.
-      // - Always replace 'index.csr.html' with the app shell.
-      let filePath = path;
-      if (appShellRoute && !indexHasBeenPrerendered) {
-        if (outputMode !== OutputMode.Server && indexHtmlOptions.output === INDEX_HTML_CSR) {
-          filePath = 'index.html';
-        } else {
-          filePath = indexHtmlOptions.output;
-        }
-      }
+  //   const indexHasBeenPrerendered = output[indexHtmlOptions.output];
+  //   for (const [path, { content, appShellRoute }] of Object.entries(output)) {
+  //     // Update the index contents with the app shell under these conditions:
+  //     // - Replace 'index.html' with the app shell only if it hasn't been prerendered yet.
+  //     // - Always replace 'index.csr.html' with the app shell.
+  //     let filePath = path;
+  //     if (appShellRoute && !indexHasBeenPrerendered) {
+  //       if (outputMode !== OutputMode.Server && indexHtmlOptions.output === INDEX_HTML_CSR) {
+  //         filePath = 'index.html';
+  //       } else {
+  //         filePath = indexHtmlOptions.output;
+  //       }
+  //     }
 
-      additionalHtmlOutputFiles.set(
-        filePath,
-        createOutputFile(filePath, content, BuildOutputFileType.Browser),
-      );
-    }
+  //     additionalHtmlOutputFiles.set(
+  //       filePath,
+  //       createOutputFile(filePath, content, BuildOutputFileType.Browser),
+  //     );
+  //   }
 
-    const serializableRouteTreeNodeForManifest: WritableSerializableRouteTreeNode = [];
-    for (const metadata of serializableRouteTreeNode) {
-      serializableRouteTreeNodeForManifest.push(metadata);
+  //   const serializableRouteTreeNodeForManifest: WritableSerializableRouteTreeNode = [];
+  //   for (const metadata of serializableRouteTreeNode) {
+  //     serializableRouteTreeNodeForManifest.push(metadata);
 
-      if (metadata.renderMode === RouteRenderMode.Prerender && !metadata.route.includes('*')) {
-        prerenderedRoutes[metadata.route] = { headers: metadata.headers };
-      }
-    }
+  //     if (metadata.renderMode === RouteRenderMode.Prerender && !metadata.route.includes('*')) {
+  //       prerenderedRoutes[metadata.route] = { headers: metadata.headers };
+  //     }
+  //   }
 
-    if (outputMode === OutputMode.Server) {
-      // Regenerate the manifest to append route tree. This is only needed if SSR is enabled.
-      const manifest = additionalOutputFiles.find((f) => f.path === SERVER_APP_MANIFEST_FILENAME);
-      assert(manifest, `${SERVER_APP_MANIFEST_FILENAME} was not found in output files.`);
+  //   if (outputMode === OutputMode.Server) {
+  //     // Regenerate the manifest to append route tree. This is only needed if SSR is enabled.
+  //     const manifest = additionalOutputFiles.find((f) => f.path === SERVER_APP_MANIFEST_FILENAME);
+  //     assert(manifest, `${SERVER_APP_MANIFEST_FILENAME} was not found in output files.`);
 
-      const { manifestContent, serverAssetsChunks } = generateAngularServerAppManifest(
-        additionalHtmlOutputFiles,
-        outputFiles,
-        optimizationOptions.styles.inlineCritical ?? false,
-        serializableRouteTreeNodeForManifest,
-        locale,
-        baseHref,
-        initialFilesPaths,
-        metafile,
-        publicPath,
-      );
+  //     const { manifestContent, serverAssetsChunks } = generateAngularServerAppManifest(
+  //       additionalHtmlOutputFiles,
+  //       outputFiles,
+  //       optimizationOptions.styles.inlineCritical ?? false,
+  //       serializableRouteTreeNodeForManifest,
+  //       locale,
+  //       baseHref,
+  //       initialFilesPaths,
+  //       metafile,
+  //       publicPath,
+  //     );
 
-      for (const chunk of serverAssetsChunks) {
-        const idx = additionalOutputFiles.findIndex(({ path }) => path === chunk.path);
-        if (idx === -1) {
-          additionalOutputFiles.push(chunk);
-        } else {
-          additionalOutputFiles[idx] = chunk;
-        }
-      }
+  //     for (const chunk of serverAssetsChunks) {
+  //       const idx = additionalOutputFiles.findIndex(({ path }) => path === chunk.path);
+  //       if (idx === -1) {
+  //         additionalOutputFiles.push(chunk);
+  //       } else {
+  //         additionalOutputFiles[idx] = chunk;
+  //       }
+  //     }
 
-      manifest.contents = new TextEncoder().encode(manifestContent);
-    }
-  }
+  //     manifest.contents = new TextEncoder().encode(manifestContent);
+  //   }
+  // }
+
+  // outputFiles.push(
+  //   ...(await runNitro(outputFiles, additionalOutputFiles, assetFiles, !!options.externalPackages)),
+  // );
 
   additionalOutputFiles.push(...additionalHtmlOutputFiles.values());
 

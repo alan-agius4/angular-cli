@@ -27,6 +27,7 @@ import {
 } from './options';
 import { Result, ResultKind } from './results';
 import { Schema as ApplicationBuilderOptions } from './schema';
+import { runNitro } from '../../tools/nitro/nitro';
 
 const isNodeV22orHigher = Number(process.versions.node.split('.', 1)[0]) >= 22;
 
@@ -237,6 +238,8 @@ export async function* buildApplication(
         }),
       );
     }
+
+    await runNitro(Object.entries(result.files), false);
 
     yield { success: true };
   }

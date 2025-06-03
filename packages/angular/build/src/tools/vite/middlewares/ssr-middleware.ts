@@ -6,6 +6,8 @@
  * found in the LICENSE file at https://angular.dev/license
  */
 
+// @ts-nocheck
+
 import type {
   AngularAppEngine as SSRAngularAppEngine,
   ɵgetOrCreateAngularServerApp as getOrCreateAngularServerApp,
@@ -101,31 +103,29 @@ export async function createAngularSsrExternalMiddleware(
     next: Connect.NextFunction,
   ) {
     (async () => {
-      const { reqHandler, AngularAppEngine } = (await server.ssrLoadModule('./server.mjs')) as {
-        reqHandler?: unknown;
-        AngularAppEngine: typeof SSRAngularAppEngine;
-      };
+      const { AngularAppEngine } = (await server.ssrLoadModule('./server/server.mjs')) as any;
+      const { listener } = (await server.ssrLoadModule('./server/index.mjs')) as any;
 
-      if (!isSsrNodeRequestHandler(reqHandler) && !isSsrRequestHandler(reqHandler)) {
-        if (!fallbackWarningShown) {
-          // eslint-disable-next-line no-console
-          console.warn(
-            `The 'reqHandler' export in 'server.ts' is either undefined or does not provide a recognized request handler. ` +
-              'Using the internal SSR middleware instead.',
-          );
+      // if (!isSsrNodeRequestHandler(reqHandler) && !isSsrRequestHandler(reqHandler)) {
+      //   if (!fallbackWarningShown) {
+      //     // eslint-disable-next-line no-console
+      //     console.warn(
+      //       `The 'reqHandler' export in 'server.ts' is either undefined or does not provide a recognized request handler. ` +
+      //         'Using the internal SSR middleware instead.',
+      //     );
 
-          fallbackWarningShown = true;
-        }
+      //     fallbackWarningShown = true;
+      //   }
 
-        angularSsrInternalMiddleware ??= createAngularSsrInternalMiddleware(
-          server,
-          indexHtmlTransformer,
-        );
+      //   angularSsrInternalMiddleware ??= createAngularSsrInternalMiddleware(
+      //     server,
+      //     indexHtmlTransformer,
+      //   );
 
-        angularSsrInternalMiddleware(req, res, next);
+      //   angularSsrInternalMiddleware(req, res, next);
 
-        return;
-      }
+      //   return;
+      // }
 
       if (cachedAngularAppEngine !== AngularAppEngine) {
         AngularAppEngine.ɵallowStaticRouteRender = true;
@@ -139,18 +139,7 @@ export async function createAngularSsrExternalMiddleware(
       }
 
       // Forward the request to the middleware in server.ts
-      if (isSsrNodeRequestHandler(reqHandler)) {
-        await reqHandler(req, res, next);
-      } else {
-        const webRes = await reqHandler(createWebRequestFromNodeRequest(req));
-        if (!webRes) {
-          next();
-
-          return;
-        }
-
-        await writeResponseToNodeResponse(webRes, res);
-      }
+      await listener(req, res, next);
     })().catch(next);
   };
 }

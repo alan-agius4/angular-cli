@@ -107,6 +107,7 @@ ts_project(
         ":node_modules/magic-string",
         ":node_modules/mrmime",
         ":node_modules/ng-packagr",
+        ":node_modules/nitropack",
         ":node_modules/parse5-html-rewriting-stream",
         ":node_modules/picomatch",
         ":node_modules/piscina",
