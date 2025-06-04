@@ -47,7 +47,7 @@ export async function runNitro(
   // Create renderer
   virtualFiles['ng-renderder.mjs'] = `
     import { createError, eventHandler, toWebRequest } from 'h3';
-    import { AngularAppEngine } from './dist/abc/server/server.mjs';
+    import { AngularAppEngine } from './dist/nitro-prototype/server/server.mjs';
 
     const angularAppEngine = new AngularAppEngine();
 
@@ -87,7 +87,7 @@ export async function runNitro(
       publicAssets: [
         {
           baseURL: '',
-          dir: 'dist/abc/browser',
+          dir: 'dist/nitro-prototype/browser',
           maxAge: 60 * 60 * 24 * 7, // 7 days
         },
       ],
