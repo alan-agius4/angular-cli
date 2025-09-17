@@ -8,7 +8,7 @@
 
 export * from './private_export';
 
-export { AngularAppEngine } from './src/app-engine';
+export { AngularAppEngine, type AngularAppEngineOptions } from './src/app-engine';
 export { createRequestHandler, type RequestHandlerFunction } from './src/handler';
 
 export {
@@ -18,9 +18,13 @@ export {
   withAppShell,
   withRoutes,
   RenderMode,
+  type ServerRouteIncremental,
   type ServerRouteClient,
   type ServerRoutePrerender,
   type ServerRoutePrerenderWithParams,
   type ServerRouteServer,
   type ServerRouteCommon,
 } from './src/routes/route-config';
+
+export { type ISRCacheItem } from './src/cache/isr-cache';
+export { type CacheStorage, type CacheStorageValue } from './src/cache/cache-storage';

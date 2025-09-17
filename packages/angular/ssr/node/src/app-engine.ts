@@ -9,6 +9,7 @@
 import { AngularAppEngine } from '@angular/ssr';
 import type { IncomingMessage } from 'node:http';
 import type { Http2ServerRequest } from 'node:http2';
+import { AngularAppEngineOptions } from '../../src/app-engine';
 import { attachNodeGlobalErrorHandlers } from './errors';
 import { createWebRequestFromNodeRequest } from './request';
 
@@ -19,12 +20,28 @@ import { createWebRequestFromNodeRequest } from './request';
  *
  * @remarks This class should be instantiated once and used as a singleton across the server-side
  * application to ensure consistent handling of rendering requests and resource management.
+ *
+ * @example
+ * ```ts
+ * import { AngularNodeAppEngine } from '@angular/ssr/node';
+ * import { createStorage } from 'unstorage';
+ * import fsDriver from 'unstorage/drivers/fs';
+ *
+ * const storage = createStorage({
+ *   driver: fsDriver({ base: './cache' })
+ * });
+ *
+ * const angularApp = new AngularNodeAppEngine({
+ *   cache: storage
+ * });
+ * ```
  */
 export class AngularNodeAppEngine {
-  private readonly angularAppEngine = new AngularAppEngine();
+  private readonly angularAppEngine: AngularAppEngine;
 
-  constructor() {
+  constructor(options?: AngularAppEngineOptions) {
     attachNodeGlobalErrorHandlers();
+    this.angularAppEngine = new AngularAppEngine(options);
   }
 
   /**

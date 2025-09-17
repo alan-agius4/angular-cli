@@ -472,10 +472,23 @@ async function* handleSSGRoute(
     includePrerenderFallbackRoutes &&
     (fallback !== PrerenderFallback.None || !invokeGetPrerenderParams)
   ) {
+    let renderMode: RenderMode;
+    switch (fallback) {
+      case PrerenderFallback.Client:
+        renderMode = RenderMode.Client;
+        break;
+      case PrerenderFallback.Incremental:
+        renderMode = RenderMode.Incremental;
+        break;
+      default:
+        renderMode = RenderMode.Server;
+        break;
+    }
+
     yield {
       ...meta,
       route: currentRoutePath,
-      renderMode: fallback === PrerenderFallback.Client ? RenderMode.Client : RenderMode.Server,
+      renderMode,
     };
   }
 }

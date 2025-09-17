@@ -11,17 +11,43 @@ import { Type } from '@angular/core';
 
 // @public
 export class AngularAppEngine {
+    constructor(options?: AngularAppEngineOptions);
     handle(request: Request, requestContext?: unknown): Promise<Response | null>;
     static ɵallowStaticRouteRender: boolean;
     static ɵhooks: Hooks;
 }
 
 // @public
+export interface AngularAppEngineOptions {
+    cache?: CacheStorage_2<ISRCacheItem>;
+}
+
+// @public
+interface CacheStorage_2<V extends CacheStorageValue = CacheStorageValue> {
+    getItem(key: string): Promise<V | null>;
+    removeItem(key: string): Promise<void>;
+    setItem(key: string, value: V): Promise<void>;
+}
+export { CacheStorage_2 as CacheStorage }
+
+// @public
+export type CacheStorageValue = null | string | number | boolean | object;
+
+// @public
 export function createRequestHandler(handler: RequestHandlerFunction): RequestHandlerFunction;
+
+// @public
+export interface ISRCacheItem {
+    createdAt: number;
+    headers: Readonly<Record<string, string>>;
+    html: string;
+    isRegenerationInProgress?: boolean;
+}
 
 // @public
 export enum PrerenderFallback {
     Client = 1,
+    Incremental = 3,
     None = 2,
     Server = 0
 }
@@ -32,6 +58,7 @@ export function provideServerRendering(...features: ServerRenderingFeature<Serve
 // @public
 export enum RenderMode {
     Client = 1,
+    Incremental = 3,
     Prerender = 2,
     Server = 0
 }
@@ -40,7 +67,7 @@ export enum RenderMode {
 export type RequestHandlerFunction = (request: Request) => Promise<Response | null> | null | Response;
 
 // @public
-export type ServerRoute = ServerRouteClient | ServerRoutePrerender | ServerRoutePrerenderWithParams | ServerRouteServer;
+export type ServerRoute = ServerRouteClient | ServerRoutePrerender | ServerRoutePrerenderWithParams | ServerRouteServer | ServerRouteIncremental;
 
 // @public
 export interface ServerRouteClient extends ServerRouteCommon {
@@ -52,6 +79,12 @@ export interface ServerRouteCommon {
     headers?: Record<string, string>;
     path: string;
     status?: number;
+}
+
+// @public
+export interface ServerRouteIncremental extends ServerRouteCommon {
+    renderMode: RenderMode.Incremental;
+    revalidate: number;
 }
 
 // @public

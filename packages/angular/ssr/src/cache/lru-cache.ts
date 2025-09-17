@@ -102,6 +102,19 @@ export class LRUCache<Key, Value> {
   }
 
   /**
+   * Deletes a key-value pair from the cache.
+   * @param key The key to delete.
+   */
+  delete(key: Key): void {
+    const node = this.cache.get(key);
+    if (node) {
+      this.removeNode(node);
+
+      this.cache.delete(key);
+    }
+  }
+
+  /**
    * Adds a node to the head of the linked list.
    * @param node The node to add.
    */

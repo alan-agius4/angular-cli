@@ -12,6 +12,7 @@ import '@angular/compiler';
 /* eslint-enable import/no-unassigned-import */
 
 import { Component } from '@angular/core';
+import { setTimeout } from 'node:timers/promises';
 import { AngularServerApp } from '../src/app';
 import { RenderMode } from '../src/routes/route-config';
 import { setAngularAppTestingManifest } from './testing-utils';
@@ -32,6 +33,8 @@ describe('AngularServerApp', () => {
         { path: 'home', component: HomeComponent },
         { path: 'home-csr', component: HomeComponent },
         { path: 'home-ssg', component: HomeComponent },
+        { path: 'home-isr', component: HomeComponent },
+        { path: 'home-isr-two', component: HomeComponent },
         { path: 'page-with-headers', component: HomeComponent },
         { path: 'page-with-status', component: HomeComponent },
         { path: 'redirect', redirectTo: 'home' },
@@ -45,6 +48,16 @@ describe('AngularServerApp', () => {
         },
       ],
       [
+        {
+          path: 'home-isr',
+          renderMode: RenderMode.Incremental,
+          revalidate: 2,
+        },
+        {
+          path: 'home-isr-two',
+          renderMode: RenderMode.Incremental,
+          revalidate: 10,
+        },
         {
           path: 'home-csr',
           renderMode: RenderMode.Client,
@@ -256,6 +269,33 @@ describe('AngularServerApp', () => {
       it('should return null for a non-prerendered page', async () => {
         const response = await app.handle(new Request('http://localhost/unknown'));
         expect(response).toBeNull();
+      });
+    });
+
+    describe('ISR pages', () => {
+      it('should return stale content with Cache-Control and re-render in the background when cached and stale', async () => {
+        // First request to cache the page.
+        await app.handle(new Request('http://localhost/home-isr'));
+
+        await setTimeout(2_500);
+
+        const response = await app.handle(new Request('http://localhost/home-isr'));
+        expect(await response?.text()).toContain('Home works');
+        expect(response?.headers.get('Cache-Control')).toBe('no-store, must-revalidate');
+      });
+
+      it('should render and cache with Cache-Control header when no cached response is available', async () => {
+        const response = await app.handle(new Request('http://localhost/home-isr-two'));
+        expect(await response?.text()).toContain('Home works');
+        expect(response?.headers.get('Cache-Control')).toBe(
+          's-maxage=10, stale-while-revalidate=10',
+        );
+
+        const responseCached = await app.handle(new Request('http://localhost/home-isr-two'));
+        expect(await responseCached?.text()).toContain('Home works');
+        expect(responseCached?.headers.get('Cache-Control')).toBe(
+          's-maxage=10, stale-while-revalidate=10',
+        );
       });
     });
 

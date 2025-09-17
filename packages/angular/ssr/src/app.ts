@@ -15,6 +15,10 @@ import {
   ɵresetCompiledComponents,
 } from '@angular/core';
 import { ServerAssets } from './assets';
+import { CacheStorage } from './cache/cache-storage';
+import { InMemoryCache } from './cache/in-memory-cache';
+import { ISRCacheItem } from './cache/isr-cache';
+import { LRUCache } from './cache/lru-cache';
 import { Hooks } from './hooks';
 import { getAngularAppManifest } from './manifest';
 import { RenderMode } from './routes/route-config';
@@ -22,7 +26,6 @@ import { RouteTreeNodeMetadata } from './routes/route-tree';
 import { ServerRouter } from './routes/router';
 import { sha256 } from './utils/crypto';
 import { InlineCriticalCssProcessor } from './utils/inline-critical-css';
-import { LRUCache } from './utils/lru-cache';
 import { AngularBootstrap, renderAngular } from './utils/ng';
 import { promiseWithAbort } from './utils/promise';
 import { buildPathWithParams, joinUrlParts, stripLeadingSlash } from './utils/url';
@@ -48,6 +51,7 @@ const SERVER_CONTEXT_VALUE: Record<RenderMode, string> = {
   [RenderMode.Prerender]: 'ssg',
   [RenderMode.Server]: 'ssr',
   [RenderMode.Client]: '',
+  [RenderMode.Incremental]: 'isr',
 };
 
 /**
@@ -72,6 +76,11 @@ interface AngularServerAppOptions {
    * If not provided, a new `Hooks` instance is created.
    */
   hooks?: Hooks;
+
+  /**
+   * The cache storage instance for Incremental Static Regeneration (ISR).
+   */
+  cache?: CacheStorage<ISRCacheItem | null>;
 }
 
 /**
@@ -95,6 +104,11 @@ export class AngularServerApp {
   readonly hooks: Hooks;
 
   /**
+   * The cache storage instance for Incremental Static Regeneration (ISR).
+   */
+  private readonly isrCache: CacheStorage<ISRCacheItem | null>;
+
+  /**
    * Constructs an instance of `AngularServerApp`.
    *
    * @param options Optional configuration options for the server application.
@@ -102,6 +116,7 @@ export class AngularServerApp {
   constructor(private readonly options: Readonly<AngularServerAppOptions> = {}) {
     this.allowStaticRouteRender = this.options.allowStaticRouteRender ?? false;
     this.hooks = options.hooks ?? new Hooks();
+    this.isrCache = options.cache ?? new InMemoryCache();
 
     if (this.manifest.inlineCriticalCss) {
       this.inlineCriticalCssProcessor = new InlineCriticalCssProcessor((path: string) => {
@@ -182,6 +197,8 @@ export class AngularServerApp {
       if (response) {
         return response;
       }
+    } else if (renderMode === RenderMode.Incremental) {
+      return this.handleIsr(request, matchedRoute);
     }
 
     return promiseWithAbort(
@@ -189,6 +206,107 @@ export class AngularServerApp {
       request.signal,
       `Request for: ${request.url}`,
     );
+  }
+
+  /**
+   * Handles server-side rendering for routes with Incremental Static Regeneration (ISR).
+   *
+   * This method implements a stale-while-revalidate caching strategy.
+   * - If a cached response exists and is not stale, it is served immediately.
+   * - If a cached response is stale, it is served while a new version is rendered in the background.
+   * - If no cached response exists, a new version is rendered and cached.
+   *
+   * @param request - The incoming HTTP request.
+   * @param matchedRoute - The metadata of the matched route.
+   * @returns A promise that resolves to the HTTP response, or `null` if rendering fails.
+   */
+  private async handleIsr(
+    request: Request,
+    matchedRoute: RouteTreeNodeMetadata,
+  ): Promise<Response | null> {
+    const { revalidate } = matchedRoute;
+    if (revalidate === undefined) {
+      // The below should never happen.
+      throw new Error(`Route is configured for ISR but is missing the 'revalidate' option.`);
+    }
+
+    const url = new URL(request.url);
+    const cacheKey = url.pathname;
+    const cached = await this.isrCache.getItem(cacheKey);
+
+    if (!cached) {
+      return this.renderAndCacheIsrPage(request, matchedRoute, cacheKey);
+    }
+
+    const { html, createdAt, headers: cachedHeaders, isRegenerationInProgress } = cached;
+    const isStale = Date.now() - createdAt > revalidate * 1000;
+    const headers = new Headers(cachedHeaders);
+
+    if (isStale) {
+      if (!isRegenerationInProgress) {
+        void this.isrCache
+          .setItem(cacheKey, { ...cached, isRegenerationInProgress: true })
+          .then(() => this.renderAndCacheIsrPage(request, matchedRoute, cacheKey));
+      }
+
+      headers.set('Cache-Control', 'no-store, must-revalidate');
+    }
+
+    return new Response(html, {
+      headers,
+    });
+  }
+
+  /**
+   * Renders a page, caches the response, and returns it.
+   *
+   * This method is used for ISR pages to perform the initial render and to handle background revalidation.
+   * It calls `handleRendering` and caches the HTML content and headers of the response.
+   *
+   * @param request - The incoming HTTP request.
+   * @param matchedRoute - The metadata of the matched route.
+   * @param cacheKey - The cache key for the ISR cache.
+   * @returns A promise that resolves to the HTTP response, or `null` if rendering fails.
+   */
+  private async renderAndCacheIsrPage(
+    request: Request,
+    matchedRoute: RouteTreeNodeMetadata,
+    cacheKey: string,
+  ): Promise<Response | null> {
+    const cached = await this.isrCache.getItem(cacheKey);
+    let response: Response | null | undefined;
+
+    try {
+      response = await this.handleRendering(request, matchedRoute);
+
+      if (!response) {
+        return null;
+      }
+    } finally {
+      if (!response && cached?.isRegenerationInProgress) {
+        cached.isRegenerationInProgress = false;
+      }
+    }
+
+    const { revalidate = 0 } = matchedRoute;
+
+    // Add 'Cache-Control' header to the newly rendered page.
+    response.headers.set(
+      'Cache-Control',
+      `s-maxage=${revalidate}, stale-while-revalidate=${revalidate}`,
+    );
+
+    // Clone the response to be able to read the body and still be able to return it.
+    const responseForCache = response.clone();
+    const html = await responseForCache.text();
+
+    await this.isrCache.setItem(cacheKey, {
+      html,
+      headers: Object.fromEntries(responseForCache.headers.entries()),
+      createdAt: Date.now(),
+    });
+
+    return response;
   }
 
   /**

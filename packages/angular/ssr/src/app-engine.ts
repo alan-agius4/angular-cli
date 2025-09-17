@@ -7,10 +7,24 @@
  */
 
 import type { AngularServerApp, getOrCreateAngularServerApp } from './app';
+import { CacheStorage } from './cache/cache-storage';
+import { ISRCacheItem } from './cache/isr-cache';
 import { Hooks } from './hooks';
 import { getPotentialLocaleIdFromUrl, getPreferredLocale } from './i18n';
 import { EntryPointExports, getAngularAppEngineManifest } from './manifest';
 import { joinUrlParts } from './utils/url';
+
+/**
+ * Options to customize the behavior of the Angular app engine.
+ */
+export interface AngularAppEngineOptions {
+  /**
+   * A cache storage instance for Incremental Static Regeneration (ISR).
+   * When provided, ISR is enabled, allowing pages to be served from the cache
+   * and re-rendered in the background.
+   */
+  cache?: CacheStorage<ISRCacheItem>;
+}
 
 /**
  * Angular server application engine.
@@ -19,6 +33,26 @@ import { joinUrlParts } from './utils/url';
  *
  * @remarks This class should be instantiated once and used as a singleton across the server-side
  * application to ensure consistent handling of rendering requests and resource management.
+ *
+ * @example
+ * ```ts
+ * import { AngularAppEngine } from '@angular/ssr';
+ * import { createStorage } from 'unstorage';
+ * import redisDriver from 'unstorage/drivers/redis';
+ *
+ * const storage = createStorage({
+ *   driver: redisDriver({
+ *     base: 'unstorage',
+ *     host: 'HOSTNAME',
+ *     port: 6380,
+ *     password: 'REDIS_PASSWORD'
+ *   }}
+ * });
+ *
+ * const angularApp = new AngularNodeAppEngine({
+ *   cache: storage
+ * });
+ * ```
  */
 export class AngularAppEngine {
   /**
@@ -56,6 +90,15 @@ export class AngularAppEngine {
    * A cache that holds entry points, keyed by their potential locale string.
    */
   private readonly entryPointsCache = new Map<string, Promise<EntryPointExports>>();
+
+  /**
+   * The cache storage instance for Incremental Static Regeneration (ISR).
+   */
+  private readonly cache: CacheStorage<ISRCacheItem> | undefined;
+
+  constructor(options?: AngularAppEngineOptions) {
+    this.cache = options?.cache;
+  }
 
   /**
    * Handles an incoming HTTP request by serving prerendered content, performing server-side rendering,
@@ -150,6 +193,7 @@ export class AngularAppEngine {
     const serverApp = ɵgetOrCreateAngularServerApp({
       allowStaticRouteRender: AngularAppEngine.ɵallowStaticRouteRender,
       hooks: AngularAppEngine.ɵhooks,
+      cache: this.cache,
     });
 
     return serverApp;

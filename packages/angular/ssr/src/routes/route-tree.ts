@@ -70,6 +70,12 @@ export interface RouteTreeNodeMetadata {
    * A list of resource that should be preloaded by the browser.
    */
   preload?: readonly string[];
+
+  /**
+   * The time in seconds to revalidate the page.
+   * When the `renderMode` is set to `Incremental`.
+   */
+  revalidate?: number;
 }
 
 /**

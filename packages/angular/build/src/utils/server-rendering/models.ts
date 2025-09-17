@@ -37,4 +37,5 @@ export const RouteRenderMode: Record<keyof typeof RenderMode, RenderMode> = {
   Server: 0,
   Client: 1,
   Prerender: 2,
+  Incremental: 3,
 };

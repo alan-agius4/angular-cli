@@ -56,11 +56,17 @@ export enum RenderMode {
 
   /** Static Site Generation (SSG) mode, where content is pre-rendered at build time and served as static files. */
   Prerender,
+
+  /**
+   * Incremental Static Regeneration (ISR) mode, where content is pre-rendered at build time and served as static
+   * files, with periodic re-generation.
+   */
+  Incremental,
 }
 
 /**
- * Defines the fallback strategies for Static Site Generation (SSG) routes when a pre-rendered path is not available.
- * This is particularly relevant for routes with parameterized URLs where some paths might not be pre-rendered at build time.
+ * Defines fallback strategies for SSG routes when a pre-rendered path is not available.
+ * This is relevant for routes with parameterized URLs where some paths might not be pre-rendered.
  * @see {@link ServerRoutePrerenderWithParams}
  */
 export enum PrerenderFallback {
@@ -81,6 +87,12 @@ export enum PrerenderFallback {
    * This means the application will not provide any response for paths that are not pre-rendered.
    */
   None,
+
+  /**
+   * Fallback to Incremental Static Regeneration (ISR) if the pre-rendered path is not available.
+   * This strategy dynamically generates the page on the server at request time and caches it for subsequent requests.
+   */
+  Incremental,
 }
 
 /**
@@ -188,6 +200,22 @@ export interface ServerRouteServer extends ServerRouteCommon {
 }
 
 /**
+ * A server route that uses Incremental Static Regeneration (ISR) mode.
+ * @see {@link RenderMode}
+ */
+export interface ServerRouteIncremental extends ServerRouteCommon {
+  /** Specifies that the route uses Incremental Static Regeneration (ISR) mode. */
+  renderMode: RenderMode.Incremental;
+
+  /**
+   * The time in seconds to revalidate the page.
+   * During this time, the cached page will be served.
+   * After this time, the cached page will be served while a new page is generated in the background.
+   */
+  revalidate: number;
+}
+
+/**
  * Server route configuration.
  * @see {@link withRoutes}
  */
@@ -195,7 +223,8 @@ export type ServerRoute =
   | ServerRouteClient
   | ServerRoutePrerender
   | ServerRoutePrerenderWithParams
-  | ServerRouteServer;
+  | ServerRouteServer
+  | ServerRouteIncremental;
 
 /**
  * Configuration value for server routes configuration.

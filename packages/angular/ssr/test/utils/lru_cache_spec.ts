@@ -6,7 +6,7 @@
  * found in the LICENSE file at https://angular.dev/license
  */
 
-import { LRUCache } from '../../src/utils/lru-cache';
+import { LRUCache } from '../../src/cache/lru-cache';
 
 describe('LRUCache', () => {
   let cache: LRUCache<string, number>;
@@ -64,5 +64,15 @@ describe('LRUCache', () => {
     expect(cache.get('a')).toBe(1); // 'a' should still be present
     expect(cache.get('c')).toBe(3);
     expect(cache.get('d')).toBe(4);
+  });
+
+  it('should remove a key-value pair', () => {
+    cache.put('a', 1);
+    cache.put('b', 2);
+
+    cache.delete('a');
+
+    expect(cache.get('a')).toBeUndefined();
+    expect(cache.get('b')).toBe(2);
   });
 });
