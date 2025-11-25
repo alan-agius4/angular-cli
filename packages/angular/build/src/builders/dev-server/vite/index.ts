@@ -21,7 +21,6 @@ import { Result, ResultKind } from '../../application/results';
 import { OutputHashing } from '../../application/schema';
 import {
   type ApplicationBuilderInternalOptions,
-  type ExternalResultMetadata,
   JavaScriptTransformer,
   getSupportedBrowsers,
   isZonelessApp,

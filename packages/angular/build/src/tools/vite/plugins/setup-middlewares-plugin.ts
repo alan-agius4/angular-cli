@@ -11,6 +11,7 @@ import {
   ComponentStyleRecord,
   angularHtmlFallbackMiddleware,
   createAngularAssetsMiddleware,
+  createAngularBaseMiddleware,
   createAngularComponentMiddleware,
   createAngularHeadersMiddleware,
   createAngularIndexHtmlMiddleware,
@@ -63,9 +64,7 @@ async function createEncapsulateStyle(): Promise<
   const { encapsulateStyle } = await import('@angular/compiler');
   const decoder = new TextDecoder('utf-8');
 
-  return (style, componentId) => {
-    return encapsulateStyle(decoder.decode(style), componentId);
-  };
+  return (style, componentId) => encapsulateStyle(decoder.decode(style), componentId);
 }
 
 export function createAngularSetupMiddlewaresPlugin(
@@ -86,51 +85,69 @@ export function createAngularSetupMiddlewaresPlugin(
         resetComponentUpdates,
       } = options;
 
+      const { middlewares } = server;
+
       // Headers, assets and resources get handled first
-      server.middlewares.use(createAngularHeadersMiddleware(server));
-      server.middlewares.use(createAngularComponentMiddleware(server, templateUpdates));
-      server.middlewares.use(
-        createAngularAssetsMiddleware(
-          server,
-          assets,
-          outputFiles,
-          componentStyles,
-          await createEncapsulateStyle(),
-        ),
-      );
+      middlewares
+        .use(createAngularHeadersMiddleware(server))
+        .use(createAngularComponentMiddleware(server, templateUpdates))
+        .use(
+          createAngularAssetsMiddleware(
+            server,
+            assets,
+            outputFiles,
+            componentStyles,
+            await createEncapsulateStyle(),
+          ),
+        )
+        .use(createChromeDevtoolsMiddleware(server.config.cacheDir, options.projectRoot));
 
-      server.middlewares.use(
-        createChromeDevtoolsMiddleware(server.config.cacheDir, options.projectRoot),
-      );
-
-      extensionMiddleware?.forEach((middleware) => server.middlewares.use(middleware));
+      extensionMiddleware?.forEach((middleware) => middlewares.use(middleware));
 
       // Returning a function, installs middleware after the main transform middleware but
       // before the built-in HTML middleware
       // eslint-disable-next-line @typescript-eslint/no-misused-promises
       return async () => {
         if (ssrMode === ServerSsrMode.ExternalSsrMiddleware) {
-          server.middlewares.use(
-            await createAngularSsrExternalMiddleware(server, indexHtmlTransformer),
-          );
+          removeMiddleware(middlewares, 'viteBaseMiddleware');
+          middlewares
+            .use(createAngularBaseMiddleware(server))
+            .use(await createAngularSsrExternalMiddleware(server, indexHtmlTransformer));
 
           return;
         }
 
         if (ssrMode === ServerSsrMode.InternalSsrMiddleware) {
-          server.middlewares.use(createAngularSsrInternalMiddleware(server, indexHtmlTransformer));
+          middlewares.use(createAngularSsrInternalMiddleware(server, indexHtmlTransformer));
         }
 
-        server.middlewares.use(angularHtmlFallbackMiddleware);
-        server.middlewares.use(
-          createAngularIndexHtmlMiddleware(
-            server,
-            outputFiles,
-            resetComponentUpdates,
-            indexHtmlTransformer,
-          ),
-        );
+        middlewares
+          .use(angularHtmlFallbackMiddleware)
+          .use(
+            createAngularIndexHtmlMiddleware(
+              server,
+              outputFiles,
+              resetComponentUpdates,
+              indexHtmlTransformer,
+            ),
+          );
       };
     },
   };
+}
+
+/**
+ * Removes a middleware from the Vite server's middleware stack by its name.
+ *
+ * @param middlewares The Connect server instance.
+ * @param name The name of the middleware to remove.
+ */
+function removeMiddleware(middlewares: Connect.Server, name: string): void {
+  const index = middlewares.stack.findIndex(
+    ({ handle }) => typeof handle === 'function' && handle.name === name,
+  );
+
+  if (index >= 0) {
+    middlewares.stack.splice(index, 1);
+  }
 }
