@@ -8,7 +8,6 @@
 
 import Ajv, { SchemaObjCxt, ValidateFunction } from 'ajv';
 import ajvAddFormats from 'ajv-formats';
-import * as http from 'node:http';
 import * as https from 'node:https';
 import * as Url from 'node:url';
 import { Observable, from, isObservable, lastValueFrom } from 'rxjs';
@@ -139,11 +138,19 @@ export class CoreSchemaRegistry implements SchemaRegistry {
       return value;
     }
 
+    const url = new URL(uri);
+    if (url.hostname !== 'json-schema.org') {
+      throw new Error(
+        `Fetching of schemas over the network is only allowed from "https://json-schema.org".`,
+      );
+    }
+
+    // Force HTTPS
+    url.protocol = 'https';
+
     // If none are found, handle using http client.
     return new Promise<JsonObject>((resolve, reject) => {
-      const url = new Url.URL(uri);
-      const client = url.protocol === 'https:' ? https : http;
-      client.get(url, (res) => {
+      https.get(url, (res) => {
         if (!res.statusCode || res.statusCode >= 300) {
           // Consume the rest of the data to free memory.
           res.resume();

@@ -7,7 +7,7 @@ export default async function () {
   await writeMultipleFiles({
     'example-builder/package.json': '{ "builders": "./builders.json" }',
     'example-builder/schema.json':
-      '{ "$schema": "http://json-schema.org/draft-07/schema", "type": "object", "additionalProperties": true }',
+      '{ "$schema": "https://json-schema.org/draft-07/schema", "type": "object", "additionalProperties": true }',
     'example-builder/builders.json':
       '{ "$schema": "@angular-devkit/architect/src/builders-schema.json", "builders": { "example": { "implementation": "./example", "schema": "./schema.json" } } }',
     'example-builder/example.js':

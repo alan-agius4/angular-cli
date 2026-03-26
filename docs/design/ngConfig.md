@@ -26,7 +26,7 @@ The project `.angular-cli.json` goes into the project root. The global configura
 
 ## Structure
 
-The structure should be defined by a JSON schema (see [here](http://json-schema.org/)). The schema will be used to generate the `d.ts`, but that file will be kept in the file system along with the schema for IDEs.
+The structure should be defined by a JSON schema (see [here](https://json-schema.org/)). The schema will be used to generate the `d.ts`, but that file will be kept in the file system along with the schema for IDEs.
 
 Every PR that would change the schema should include the update to the `d.ts`.
 
