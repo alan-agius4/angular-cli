@@ -301,8 +301,7 @@ export async function optimizeChunks(
       const result = await bundle.generate({
         minify: { mangle: false, compress: false },
         sourcemap,
-        chunkFileNames: (chunkInfo) =>
-          `${chunkInfo.name.replace(/-[a-zA-Z0-9_-]{8}$/, '')}-[hash].js`,
+        chunkFileNames: (chunkInfo) => `${chunkInfo.name.replace(/-[\w-]{8}$/, '')}-[hash].js`,
       });
       optimizedOutput = result.output;
     } else {
@@ -323,8 +322,7 @@ export async function optimizeChunks(
       const result = await bundle.generate({
         compact: true,
         sourcemap,
-        chunkFileNames: (chunkInfo) =>
-          `${chunkInfo.name.replace(/-[a-zA-Z0-9_-]{8}$/, '')}-[hash].js`,
+        chunkFileNames: (chunkInfo) => `${chunkInfo.name.replace(/-[\w-]{8}$/, '')}-[hash].js`,
       });
       optimizedOutput = result.output;
     }
