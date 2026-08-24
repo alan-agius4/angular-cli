@@ -8,7 +8,6 @@
 
 import { readFile } from 'node:fs/promises';
 import { createContentHash } from '../../utils/hash';
-import { IMPORT_EXEC_ARGV } from '../../utils/server-rendering/esm-in-memory-loader/utils';
 import { removeSourceMappingURL } from '../../utils/source-map';
 import { WorkerPool, WorkerPoolOptions } from '../../utils/worker-pool';
 import { Cache } from './cache';
@@ -93,7 +92,6 @@ export class JavaScriptTransformer {
       jit,
     };
     this.#fileCacheKeyBase = Buffer.from(JSON.stringify(this.#commonOptions), 'utf-8');
-    this.#workerPool = this.#ensureWorkerPool();
   }
 
   /**
@@ -134,12 +132,6 @@ export class JavaScriptTransformer {
       minThreads: this.maxThreads,
       workerData: this.#commonOptions,
     };
-
-    // Prevent passing SSR `--import` (loader-hooks) from parent to child worker.
-    const filteredExecArgv = process.execArgv.filter((v) => v !== IMPORT_EXEC_ARGV);
-    if (process.execArgv.length !== filteredExecArgv.length) {
-      workerPoolOptions.execArgv = filteredExecArgv;
-    }
 
     this.#workerPool = new WorkerPool(workerPoolOptions);
 
