@@ -74,68 +74,84 @@ export async function inlineI18n(
   );
 
   try {
-    for (const locale of i18nOptions.inlineLocales) {
-      const localeDescription = i18nOptions.locales[locale];
-      let translationIntegrity: string | undefined = '';
-      for (const file of localeDescription.files) {
-        if (!file.integrity) {
-          translationIntegrity = undefined;
-          break;
+    const localeResults = await Promise.all(
+      Array.from(i18nOptions.inlineLocales, async (locale) => {
+        const localeDescription = i18nOptions.locales[locale];
+        let translationIntegrity: string | undefined = '';
+        for (const file of localeDescription.files) {
+          if (!file.integrity) {
+            translationIntegrity = undefined;
+            break;
+          }
+          translationIntegrity += (translationIntegrity ? '|' : '') + file.integrity;
         }
-        translationIntegrity += (translationIntegrity ? '|' : '') + file.integrity;
-      }
 
-      // A locale specific set of files is returned from the inliner.
-      const localeInlineResult = await inliner.inlineForLocale(
-        locale,
-        localeDescription.translation,
-        translationIntegrity,
-      );
-      const localeOutputFiles = localeInlineResult.outputFiles;
-      inlineResult.errors.push(...localeInlineResult.errors);
-      inlineResult.warnings.push(...localeInlineResult.warnings);
+        // A locale specific set of files is returned from the inliner.
+        const localeInlineResult = await inliner.inlineForLocale(
+          locale,
+          localeDescription.translation,
+          translationIntegrity,
+        );
+        const localeOutputFiles = localeInlineResult.outputFiles;
 
-      const {
-        errors,
-        warnings,
-        additionalAssets,
-        additionalOutputFiles,
-        prerenderedRoutes: generatedRoutes,
-      } = await executePostBundleSteps(
-        metafile,
-        {
-          ...options,
-          baseHref: getLocaleBaseHref(baseHref, i18nOptions, locale) ?? baseHref,
-        },
-        [...unModifiedOutputFiles, ...localeOutputFiles],
-        executionResult.assetFiles,
-        initialFiles,
-        locale,
-      );
+        const {
+          errors,
+          warnings,
+          additionalAssets,
+          additionalOutputFiles,
+          prerenderedRoutes: generatedRoutes,
+        } = await executePostBundleSteps(
+          metafile,
+          {
+            ...options,
+            baseHref: getLocaleBaseHref(baseHref, i18nOptions, locale) ?? baseHref,
+          },
+          [...unModifiedOutputFiles.map((file) => file.clone()), ...localeOutputFiles],
+          executionResult.assetFiles,
+          initialFiles,
+          locale,
+        );
 
-      localeOutputFiles.push(...additionalOutputFiles);
-      inlineResult.errors.push(...errors);
-      inlineResult.warnings.push(...warnings);
+        localeOutputFiles.push(...additionalOutputFiles);
 
-      // Update directory with locale base or subPath
-      const subPath = i18nOptions.locales[locale].subPath;
-      if (i18nOptions.flatOutput !== true) {
-        localeOutputFiles.forEach((file) => {
-          file.path = join(subPath, file.path);
-        });
-
-        for (const assetFile of [...executionResult.assetFiles, ...additionalAssets]) {
-          updatedAssetFiles.push({
-            source: assetFile.source,
-            destination: join(subPath, assetFile.destination),
+        const localeAssetFiles = [];
+        // Update directory with locale base or subPath
+        const subPath = i18nOptions.locales[locale].subPath;
+        if (i18nOptions.flatOutput !== true) {
+          localeOutputFiles.forEach((file) => {
+            file.path = join(subPath, file.path);
           });
-        }
-      } else {
-        executionResult.assetFiles.push(...additionalAssets);
-      }
 
-      inlineResult.prerenderedRoutes = { ...inlineResult.prerenderedRoutes, ...generatedRoutes };
-      updatedOutputFiles.push(...localeOutputFiles);
+          for (const assetFile of [...executionResult.assetFiles, ...additionalAssets]) {
+            localeAssetFiles.push({
+              source: assetFile.source,
+              destination: join(subPath, assetFile.destination),
+            });
+          }
+        }
+
+        return {
+          errors: [...localeInlineResult.errors, ...errors],
+          warnings: [...localeInlineResult.warnings, ...warnings],
+          outputFiles: localeOutputFiles,
+          assetFiles: localeAssetFiles,
+          additionalAssets: i18nOptions.flatOutput === true ? additionalAssets : [],
+          prerenderedRoutes: generatedRoutes,
+        };
+      }),
+    );
+
+    for (const result of localeResults) {
+      inlineResult.errors.push(...result.errors);
+      inlineResult.warnings.push(...result.warnings);
+      Object.assign(inlineResult.prerenderedRoutes, result.prerenderedRoutes);
+      updatedOutputFiles.push(...result.outputFiles);
+
+      if (i18nOptions.flatOutput !== true) {
+        updatedAssetFiles.push(...result.assetFiles);
+      } else {
+        executionResult.assetFiles.push(...result.additionalAssets);
+      }
     }
 
     // Update the result with all localized files.
@@ -162,13 +178,20 @@ export async function inlineI18n(
       }
       const firstLocale = [...i18nOptions.inlineLocales][0];
 
-      for (const [id, content] of executionResult.templateUpdates) {
-        const templateUpdateResult = await inliner.inlineTemplateUpdate(
-          firstLocale,
-          i18nOptions.locales[firstLocale].translation,
-          content,
-          id,
-        );
+      const templateUpdateEntries = Array.from(executionResult.templateUpdates);
+      const templateResults = await Promise.all(
+        templateUpdateEntries.map(async ([id, content]) => {
+          const templateUpdateResult = await inliner.inlineTemplateUpdate(
+            firstLocale,
+            i18nOptions.locales[firstLocale].translation,
+            content,
+            id,
+          );
+          return { id, templateUpdateResult };
+        }),
+      );
+
+      for (const { id, templateUpdateResult } of templateResults) {
         executionResult.templateUpdates.set(id, templateUpdateResult.code);
         inlineResult.errors.push(...templateUpdateResult.errors);
         inlineResult.warnings.push(...templateUpdateResult.warnings);

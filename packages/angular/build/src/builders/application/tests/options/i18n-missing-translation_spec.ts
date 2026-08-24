@@ -179,6 +179,49 @@ describeBuilder(buildApplication, APPLICATION_BUILDER_INFO, (harness) => {
       expect(result?.success).toBeTrue();
       expectNoLog(logs, 'No translation found for');
     });
+    it('should build multiple locales in parallel and output translated files per locale', async () => {
+      harness.useProject('test', {
+        root: '.',
+        sourceRoot: 'src',
+        cli: {
+          cache: {
+            enabled: false,
+          },
+        },
+        i18n: {
+          sourceLocale: 'en-US',
+          locales: {
+            'fr': 'src/locales/messages.fr.xlf',
+            'de': 'src/locales/messages.de.xlf',
+          },
+        },
+      });
+
+      harness.useTarget('build', {
+        ...BASE_OPTIONS,
+        localize: ['fr', 'de'],
+      });
+
+      await harness.writeFile(
+        'src/app/app.component.html',
+        `
+          <p id="hello" i18n="An introduction header for this sample">Hello {{ title }}! </p>
+        `,
+      );
+
+      await harness.writeFile('src/locales/messages.fr.xlf', GOOD_TRANSLATION_FILE_CONTENT);
+      await harness.writeFile('src/locales/messages.de.xlf', GERMAN_TRANSLATION_FILE_CONTENT);
+
+      const { result, logs } = await harness.executeOnce({ outputLogsOnFailure: false });
+
+      expect(result?.success).toBeTrue();
+      expectNoLog(logs, 'No translation found for');
+
+      harness.expectFile('dist/browser/fr/main.js').content.toContain('Bonjour');
+      harness.expectFile('dist/browser/de/main.js').content.toContain('Hallo');
+      harness.expectFile('dist/browser/fr/index.html').content.toContain('lang="fr"');
+      harness.expectFile('dist/browser/de/index.html').content.toContain('lang="de"');
+    });
   });
 });
 
@@ -206,6 +249,24 @@ const MISSING_TRANSLATION_FILE_CONTENT = `
     <file target-language="fr" datatype="plaintext" original="ng2.template">
       <body>
 
+      </body>
+    </file>
+  </xliff>
+`;
+
+const GERMAN_TRANSLATION_FILE_CONTENT = `
+  <?xml version="1.0" encoding="UTF-8" ?>
+  <xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
+    <file target-language="de" datatype="plaintext" original="ng2.template">
+      <body>
+        <trans-unit id="4286451273117902052" datatype="html">
+          <target>Hallo <x id="INTERPOLATION" equiv-text="{{ title }}"/>! </target>
+          <context-group purpose="location">
+            <context context-type="targetfile">src/app/app.component.html</context>
+            <context context-type="linenumber">2,3</context>
+          </context-group>
+          <note priority="1" from="description">An introduction header for this sample</note>
+        </trans-unit>
       </body>
     </file>
   </xliff>

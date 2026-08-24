@@ -340,4 +340,31 @@ describe('I18nInliner', () => {
     expect(findFile(outputFiles, 'main.js').text).toContain('"Bonjour"');
     expect(findFile(outputFiles, 'main.js').text).not.toContain('$localize');
   });
+  it('inlines translations for multiple locales concurrently in parallel', async () => {
+    const localeInliner = createInliner([
+      browserFile('main.js', GREETING_SOURCE),
+      browserFile('chunk.js', GREETING_SOURCE),
+    ]);
+
+    const [french, german, spanish] = await Promise.all([
+      localeInliner.inlineForLocale('fr', { greeting: translationFor('Bonjour') }),
+      localeInliner.inlineForLocale('de', { greeting: translationFor('Hallo') }),
+      localeInliner.inlineForLocale('es', { greeting: translationFor('Hola') }),
+    ]);
+
+    expect(french.errors).toEqual([]);
+    expect(french.warnings).toEqual([]);
+    expect(findFile(french.outputFiles, 'main.js').text).toContain('"Bonjour"');
+    expect(findFile(french.outputFiles, 'chunk.js').text).toContain('"Bonjour"');
+
+    expect(german.errors).toEqual([]);
+    expect(german.warnings).toEqual([]);
+    expect(findFile(german.outputFiles, 'main.js').text).toContain('"Hallo"');
+    expect(findFile(german.outputFiles, 'chunk.js').text).toContain('"Hallo"');
+
+    expect(spanish.errors).toEqual([]);
+    expect(spanish.warnings).toEqual([]);
+    expect(findFile(spanish.outputFiles, 'main.js').text).toContain('"Hola"');
+    expect(findFile(spanish.outputFiles, 'chunk.js').text).toContain('"Hola"');
+  });
 });

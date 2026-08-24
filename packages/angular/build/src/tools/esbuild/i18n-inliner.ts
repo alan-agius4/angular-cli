@@ -53,6 +53,7 @@ export interface I18nInlinerOptions {
  */
 export class I18nInliner {
   #cacheInitFailed = false;
+  #cacheInitPromise: Promise<void> | undefined;
   #workerPool: WorkerPool;
   #cache: PersistentCacheStore | undefined;
   readonly #localizeFiles: ReadonlyMap<string, BuildOutputFile>;
@@ -305,23 +306,25 @@ export class I18nInliner {
       return;
     }
 
-    const { persistentCachePath } = this.options;
-    // Webcontainers currently do not support this persistent cache store.
-    if (!persistentCachePath || process.versions.webcontainer) {
-      return;
-    }
+    return (this.#cacheInitPromise ??= (async () => {
+      const { persistentCachePath } = this.options;
+      // Webcontainers currently do not support this persistent cache store.
+      if (!persistentCachePath || process.versions.webcontainer) {
+        return;
+      }
 
-    // Initialize a persistent cache for i18n transformations.
-    try {
-      this.#cache = await createPersistentCacheStore(join(persistentCachePath, 'angular-i18n'));
-    } catch {
-      this.#cacheInitFailed = true;
+      // Initialize a persistent cache for i18n transformations.
+      try {
+        this.#cache = await createPersistentCacheStore(join(persistentCachePath, 'angular-i18n'));
+      } catch {
+        this.#cacheInitFailed = true;
 
-      // eslint-disable-next-line no-console
-      console.warn(
-        'Unable to initialize JavaScript cache storage.\n' +
-          'This will not affect the build output content but may result in slower builds.',
-      );
-    }
+        // eslint-disable-next-line no-console
+        console.warn(
+          'Unable to initialize JavaScript cache storage.\n' +
+            'This will not affect the build output content but may result in slower builds.',
+        );
+      }
+    })());
   }
 }
