@@ -8,7 +8,12 @@
 
 import type { AngularServerApp, getOrCreateAngularServerApp } from './app';
 import { Hooks } from './hooks';
-import { getPotentialLocaleIdFromUrl, getPreferredLocale } from './i18n';
+import {
+  LocaleLookup,
+  createLocaleLookup,
+  getPotentialLocaleIdFromUrl,
+  getPreferredLocale,
+} from './i18n';
 import { EntryPointExports, getAngularAppEngineManifest } from './manifest';
 import { createRedirectResponse } from './utils/redirect';
 import { joinUrlParts } from './utils/url';
@@ -107,6 +112,41 @@ export class AngularAppEngine {
   private readonly trustProxyHeaders: ReadonlySet<string>;
 
   /**
+   * Precomputed locale lookup structures for fast locale resolution.
+   */
+  private readonly localeLookup: LocaleLookup;
+
+  /**
+   * Precomputed redirect paths mapped by locale identifier.
+   */
+  private readonly localeRedirectPaths: ReadonlyMap<string, string>;
+
+  /**
+   * Precomputed entry point loaders mapped by entry point key.
+   */
+  private readonly entryPointLoaders: ReadonlyMap<string, () => Promise<EntryPointExports>>;
+
+  /**
+   * Whether the application has multiple locales.
+   */
+  private readonly isMultiLocale: boolean;
+
+  /**
+   * Whether the application has a single locale.
+   */
+  private readonly isSingleLocale: boolean;
+
+  /**
+   * The entry point key when the application has a single locale.
+   */
+  private readonly singleLocaleEntryPointKey: string;
+
+  /**
+   * Whether there is an entry point for the root base path (`''`).
+   */
+  private readonly hasRootEntryPoint: boolean;
+
+  /**
    * A cache that holds entry points, keyed by their potential locale string.
    */
   private readonly entryPointsCache = new Map<string, Promise<EntryPointExports>>();
@@ -118,6 +158,28 @@ export class AngularAppEngine {
   constructor(options?: AngularAppEngineOptions) {
     this.allowedHosts = this.getAllowedHosts(options);
     this.trustProxyHeaders = normalizeTrustProxyHeaders(options?.trustProxyHeaders);
+
+    this.localeLookup = createLocaleLookup(this.supportedLocales);
+    this.isMultiLocale = this.supportedLocales.length > 1;
+    this.isSingleLocale = this.supportedLocales.length === 1;
+    this.singleLocaleEntryPointKey = this.isSingleLocale
+      ? (this.manifest.supportedLocales[this.supportedLocales[0]] ?? '')
+      : '';
+    this.hasRootEntryPoint = !!this.manifest.entryPoints[''];
+
+    const localeRedirectPaths = new Map<string, string>();
+    for (const [locale, subPath] of Object.entries(this.manifest.supportedLocales)) {
+      localeRedirectPaths.set(locale, joinUrlParts(this.manifest.basePath, subPath));
+    }
+    this.localeRedirectPaths = localeRedirectPaths;
+
+    const entryPointLoaders = new Map<string, () => Promise<EntryPointExports>>();
+    for (const [key, loader] of Object.entries(this.manifest.entryPoints)) {
+      if (loader) {
+        entryPointLoaders.set(key, loader);
+      }
+    }
+    this.entryPointLoaders = entryPointLoaders;
   }
 
   private getAllowedHosts(options: AngularAppEngineOptions | undefined): ReadonlySet<string> {
@@ -168,14 +230,22 @@ export class AngularAppEngine {
       return this.handleValidationError(securedRequest.url, error as Error);
     }
 
-    const serverApp = await this.getAngularServerAppForRequest(securedRequest);
+    const url = new URL(securedRequest.url);
+    const { pathname } = url;
+
+    // Short-circuit root request redirect for multi-locale apps without a root entry point.
+    if (this.isMultiLocale && !this.hasRootEntryPoint && pathname === this.manifest.basePath) {
+      return this.redirectBasedOnAcceptLanguage(securedRequest, pathname);
+    }
+
+    const serverApp = await this.getAngularServerAppForRequest(url, pathname);
     if (serverApp) {
       return serverApp.handle(securedRequest, requestContext);
     }
 
-    if (this.supportedLocales.length > 1) {
+    if (this.isMultiLocale) {
       // Redirect to the preferred language if i18n is enabled.
-      return this.redirectBasedOnAcceptLanguage(securedRequest);
+      return this.redirectBasedOnAcceptLanguage(securedRequest, pathname);
     }
 
     return null;
@@ -186,15 +256,13 @@ export class AngularAppEngine {
    * Redirects the user to a locale-specific path based on the `Accept-Language` header.
    *
    * @param request The incoming request.
+   * @param pathname The pathname of the request.
    * @returns A `Response` object with a 302 redirect, or `null` if i18n is not enabled
    *          or the request is not for the base path.
    */
-  private redirectBasedOnAcceptLanguage(request: Request): Response | null {
-    const { basePath, supportedLocales } = this.manifest;
-
+  private redirectBasedOnAcceptLanguage(request: Request, pathname: string): Response | null {
     // If the request is not for the base path, it's not our responsibility to handle it.
-    const { pathname } = new URL(request.url);
-    if (pathname !== basePath) {
+    if (pathname !== this.manifest.basePath) {
       return null;
     }
 
@@ -202,16 +270,17 @@ export class AngularAppEngine {
     // from the 'Accept-Language' header.
     const preferredLocale = getPreferredLocale(
       request.headers.get('Accept-Language') || '*',
-      this.supportedLocales,
+      this.localeLookup,
     );
 
     if (preferredLocale) {
-      const subPath = supportedLocales[preferredLocale];
-      if (subPath !== undefined) {
-        const prefix = request.headers.get('X-Forwarded-Prefix') ?? '';
+      const redirectPath = this.localeRedirectPaths.get(preferredLocale);
+      if (redirectPath !== undefined) {
+        const prefix = request.headers.get('X-Forwarded-Prefix');
+        const location = prefix ? joinUrlParts(prefix, redirectPath) : redirectPath;
 
         return createRedirectResponse(
-          joinUrlParts(prefix, pathname, subPath),
+          location,
           302,
           // Use a 302 redirect as language preference may change.
           { 'Vary': 'Accept-Language' },
@@ -227,16 +296,17 @@ export class AngularAppEngine {
    *
    * This method checks if the request URL corresponds to an Angular application entry point.
    * If so, it initializes or retrieves an instance of the Angular server application for that entry point.
-   * Requests that resemble file requests (except for `/index.html`) are skipped.
    *
-   * @param request - The incoming HTTP request object.
+   * @param url - The parsed URL of the request.
+   * @param pathname - The pathname of the request URL.
    * @returns A promise that resolves to an `AngularServerApp` instance if a valid entry point is found,
    * or `null` if no entry point matches the request URL.
    */
-  private async getAngularServerAppForRequest(request: Request): Promise<AngularServerApp | null> {
-    // Skip if the request looks like a file but not `/index.html`.
-    const url = new URL(request.url);
-    const entryPoint = await this.getEntryPointExportsForUrl(url);
+  private async getAngularServerAppForRequest(
+    url: URL,
+    pathname: string,
+  ): Promise<AngularServerApp | null> {
+    const entryPoint = await this.getEntryPointExportsForUrl(url, pathname);
     if (!entryPoint) {
       return null;
     }
@@ -257,23 +327,22 @@ export class AngularAppEngine {
   /**
    * Retrieves the exports for a specific entry point, caching the result.
    *
-   * @param potentialLocale - The locale string used to find the corresponding entry point.
+   * @param key - The key used to find the corresponding entry point.
    * @returns A promise that resolves to the entry point exports or `undefined` if not found.
    */
-  private getEntryPointExports(potentialLocale: string): Promise<EntryPointExports> | undefined {
-    const cachedEntryPoint = this.entryPointsCache.get(potentialLocale);
+  private getEntryPointExports(key: string): Promise<EntryPointExports> | undefined {
+    const cachedEntryPoint = this.entryPointsCache.get(key);
     if (cachedEntryPoint) {
       return cachedEntryPoint;
     }
 
-    const { entryPoints } = this.manifest;
-    const entryPoint = entryPoints[potentialLocale];
-    if (!entryPoint) {
+    const loader = this.entryPointLoaders.get(key);
+    if (!loader) {
       return undefined;
     }
 
-    const entryPointExports = entryPoint();
-    this.entryPointsCache.set(potentialLocale, entryPointExports);
+    const entryPointExports = loader();
+    this.entryPointsCache.set(key, entryPointExports);
 
     return entryPointExports;
   }
@@ -287,16 +356,26 @@ export class AngularAppEngine {
    * Otherwise, the method extracts a potential locale identifier from the URL and looks up the corresponding entry point.
    *
    * @param url - The URL of the request.
+   * @param pathname - The pathname of the request URL.
    * @returns A promise that resolves to the entry point exports or `undefined` if not found.
    */
-  private getEntryPointExportsForUrl(url: URL): Promise<EntryPointExports> | undefined {
-    const { basePath, supportedLocales } = this.manifest;
-
-    if (this.supportedLocales.length === 1) {
-      return this.getEntryPointExports(supportedLocales[this.supportedLocales[0]]);
+  private getEntryPointExportsForUrl(
+    url: URL,
+    pathname: string,
+  ): Promise<EntryPointExports> | undefined {
+    if (this.isSingleLocale) {
+      return this.getEntryPointExports(this.singleLocaleEntryPointKey);
     }
 
-    const potentialLocale = getPotentialLocaleIdFromUrl(url, basePath);
+    if (this.supportedLocales.length === 0) {
+      return this.getEntryPointExports('');
+    }
+
+    if (pathname === this.manifest.basePath) {
+      return this.getEntryPointExports('');
+    }
+
+    const potentialLocale = getPotentialLocaleIdFromUrl(url, this.manifest.basePath);
 
     return this.getEntryPointExports(potentialLocale) ?? this.getEntryPointExports('');
   }

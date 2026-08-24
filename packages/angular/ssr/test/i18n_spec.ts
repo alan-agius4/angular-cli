@@ -6,7 +6,7 @@
  * found in the LICENSE file at https://angular.dev/license
  */
 
-import { getPotentialLocaleIdFromUrl, getPreferredLocale } from '../src/i18n';
+import { createLocaleLookup, getPotentialLocaleIdFromUrl, getPreferredLocale } from '../src/i18n';
 
 describe('getPotentialLocaleIdFromUrl', () => {
   it('should extract locale ID correctly when basePath is present', () => {
@@ -63,6 +63,26 @@ describe('getPotentialLocaleIdFromUrl', () => {
     const basePath = '/base';
     const localeId = getPotentialLocaleIdFromUrl(url, basePath);
     expect(localeId).toBe('en');
+  });
+});
+
+describe('createLocaleLookup', () => {
+  it('should precompute exact and prefix lookup structures', () => {
+    const supportedLocales = ['en-US', 'fr-FR', 'de-DE', 'en-GB'];
+    const lookup = createLocaleLookup(supportedLocales);
+
+    expect(lookup.supportedLocales).toBe(supportedLocales);
+    expect(lookup.defaultLocale).toBe('en-US');
+
+    expect(lookup.exactMap.get('en-us')).toBe('en-US');
+    expect(lookup.exactMap.get('fr-fr')).toBe('fr-FR');
+    expect(lookup.exactMap.get('de-de')).toBe('de-DE');
+    expect(lookup.exactMap.get('en-gb')).toBe('en-GB');
+
+    // First matching supported locale for 'en' is 'en-US'
+    expect(lookup.prefixMap.get('en')).toBe('en-US');
+    expect(lookup.prefixMap.get('fr')).toBe('fr-FR');
+    expect(lookup.prefixMap.get('de')).toBe('de-DE');
   });
 });
 
@@ -166,5 +186,31 @@ describe('getPreferredLocale', () => {
     // Since 'fr-CH' and 'fr' do not match any supported locales,
     // and '*' is present with quality 0.5, the first supported locale is chosen as a fallback.
     expect(result).toBe('it-IT');
+  });
+
+  it('should work with precomputed LocaleLookup', () => {
+    const supportedLocales = ['en-US', 'fr-FR', 'de-DE'];
+    const lookup = createLocaleLookup(supportedLocales);
+
+    expect(getPreferredLocale('fr-FR;q=0.9,en-US;q=0.8', lookup)).toBe('fr-FR');
+    expect(getPreferredLocale('en', lookup)).toBe('en-US');
+    expect(getPreferredLocale('de', lookup)).toBe('de-DE');
+    expect(getPreferredLocale('*', lookup)).toBe('en-US');
+  });
+
+  it('should handle single simple language tag without quality value via fast path', () => {
+    const lookup = createLocaleLookup(['en-US', 'fr-FR', 'it-IT']);
+
+    expect(getPreferredLocale('it-it', lookup)).toBe('it-IT');
+    expect(getPreferredLocale('IT-IT', lookup)).toBe('it-IT');
+    expect(getPreferredLocale('fr', lookup)).toBe('fr-FR');
+    expect(getPreferredLocale('es', lookup)).toBe('en-US');
+  });
+
+  it('should return undefined when all supported locales have quality 0', () => {
+    const supportedLocales = ['en-US', 'fr-FR'];
+    const lookup = createLocaleLookup(supportedLocales);
+
+    expect(getPreferredLocale('en-US;q=0,fr-FR;q=0', lookup)).toBeUndefined();
   });
 });

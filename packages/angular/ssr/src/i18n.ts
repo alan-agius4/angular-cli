@@ -45,49 +45,100 @@ export function getPotentialLocaleIdFromUrl(url: URL, basePath: string): string 
 }
 
 /**
+ * Represents a precomputed locale lookup structure for fast preferred locale resolution.
+ */
+export interface LocaleLookup {
+  readonly supportedLocales: ReadonlyArray<string>;
+  readonly defaultLocale: string;
+  readonly exactMap: ReadonlyMap<string, string>;
+  readonly prefixMap: ReadonlyMap<string, string>;
+}
+
+/**
+ * Precomputes normalized locale mappings (exact lowercase matches and primary language subtag prefixes)
+ * to optimize runtime locale matching.
+ *
+ * @param supportedLocales - An array of supported locales (e.g., `['en-US', 'fr-FR']`).
+ * @returns A `LocaleLookup` structure containing precomputed lookup maps.
+ */
+export function createLocaleLookup(supportedLocales: ReadonlyArray<string>): LocaleLookup {
+  const exactMap = new Map<string, string>();
+  const prefixMap = new Map<string, string>();
+
+  for (const locale of supportedLocales) {
+    const normalizedLocale = normalizeLocale(locale);
+    exactMap.set(normalizedLocale, locale);
+
+    const [languagePrefix] = normalizedLocale.split('-', 1);
+    if (!prefixMap.has(languagePrefix)) {
+      prefixMap.set(languagePrefix, locale);
+    }
+  }
+
+  return {
+    supportedLocales,
+    defaultLocale: supportedLocales[0],
+    exactMap,
+    prefixMap,
+  };
+}
+
+/**
  * Parses the `Accept-Language` header and returns a list of locale preferences with their respective quality values.
  *
  * The `Accept-Language` header is typically a comma-separated list of locales, with optional quality values
  * in the form of `q=<value>`. If no quality value is specified, a default quality of `1` is assumed.
  * Special case: if the header is `*`, it returns the default locale with a quality of `1`.
  *
- * @param header - The value of the `Accept-Language` header, typically a comma-separated list of locales
- *                  with optional quality values (e.g., `en-US;q=0.8,fr-FR;q=0.9`). If the header is `*`,
- *                  it represents a wildcard for any language, returning the default locale.
- *
- * @returns A `ReadonlyMap` where the key is the locale (e.g., `en-US`, `fr-FR`), and the value is
- *          the associated quality value (a number between 0 and 1). If no quality value is provided,
- *          a default of `1` is used.
- *
- * @example
- * ```js
- * parseLanguageHeader('en-US;q=0.8,fr-FR;q=0.9')
- * // returns new Map([['en-US', 0.8], ['fr-FR', 0.9]])
-
- * parseLanguageHeader('*')
- * // returns new Map([['*', 1]])
- * ```
+ * @param header - The value of the `Accept-Language` header.
+ * @returns An array of `[locale, quality]` pairs sorted in descending quality order.
  */
-function parseLanguageHeader(header: string): ReadonlyMap<string, number> {
+function parseLanguageHeader(header: string): Array<readonly [string, number]> {
   if (header === '*') {
-    return new Map([['*', 1]]);
+    return [['*', 1]];
   }
 
-  const parsedValues = header
-    .split(',')
-    .map((item) => {
-      const [locale, qualityValue] = item.split(';', 2).map((v) => v.trim());
+  const items = header.split(',');
+  const parsedValues: Array<readonly [string, number]> = [];
+  let needsSort = false;
+  let prevQuality = 1;
 
-      let quality = qualityValue?.startsWith('q=') ? parseFloat(qualityValue.slice(2)) : undefined;
-      if (typeof quality !== 'number' || isNaN(quality) || quality < 0 || quality > 1) {
-        quality = 1; // Invalid quality value defaults to 1
+  for (const item of items) {
+    const trimmed = item.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    const semiIndex = trimmed.indexOf(';');
+    let locale: string;
+    let quality = 1;
+
+    if (semiIndex === -1) {
+      locale = trimmed;
+    } else {
+      locale = trimmed.slice(0, semiIndex).trim();
+      const qualityPart = trimmed.slice(semiIndex + 1).trim();
+      if (qualityPart.startsWith('q=')) {
+        const q = parseFloat(qualityPart.slice(2));
+        if (typeof q === 'number' && !isNaN(q) && q >= 0 && q <= 1) {
+          quality = q;
+        }
       }
+    }
 
-      return [locale, quality] as const;
-    })
-    .sort(([_localeA, qualityA], [_localeB, qualityB]) => qualityB - qualityA);
+    if (quality > prevQuality) {
+      needsSort = true;
+    }
+    prevQuality = quality;
 
-  return new Map(parsedValues);
+    parsedValues.push([locale, quality]);
+  }
+
+  if (needsSort) {
+    parsedValues.sort(([, qualityA], [, qualityB]) => qualityB - qualityA);
+  }
+
+  return parsedValues;
 }
 
 /**
@@ -102,8 +153,7 @@ function parseLanguageHeader(header: string): ReadonlyMap<string, number> {
  *
  * @param header - The `Accept-Language` header string to parse and evaluate. It may contain multiple
  *                 locales with optional quality values, for example: `'en-US;q=0.8,fr-FR;q=0.9'`.
- * @param supportedLocales - An array of supported locales (e.g., `['en-US', 'fr-FR']`),
- *                           representing the locales available in the application.
+ * @param supportedLocales - An array of supported locales (e.g., `['en-US', 'fr-FR']`) or a precomputed `LocaleLookup`.
  * @returns The best matching locale from the supported languages, or `undefined` if no match is found.
  *
  * @example
@@ -120,42 +170,71 @@ function parseLanguageHeader(header: string): ReadonlyMap<string, number> {
  */
 export function getPreferredLocale(
   header: string,
-  supportedLocales: ReadonlyArray<string>,
+  supportedLocales: ReadonlyArray<string> | LocaleLookup,
 ): string | undefined {
-  if (supportedLocales.length < 2) {
-    return supportedLocales[0];
+  const lookup = Array.isArray(supportedLocales)
+    ? createLocaleLookup(supportedLocales)
+    : (supportedLocales as LocaleLookup);
+
+  const locales = lookup.supportedLocales;
+  if (locales.length < 2) {
+    return lookup.defaultLocale;
   }
 
-  const parsedLocales = parseLanguageHeader(header);
+  // Fast path for empty or wildcard-only header
+  if (!header || header === '*') {
+    return lookup.defaultLocale;
+  }
+
+  const trimmedHeader = header.trim();
+  if (trimmedHeader === '' || trimmedHeader === '*') {
+    return lookup.defaultLocale;
+  }
+
+  const { exactMap, prefixMap } = lookup;
+
+  // Fast path for a single simple language tag without quality value or list (e.g. 'en-US' or 'it')
+  if (!trimmedHeader.includes(',') && !trimmedHeader.includes(';')) {
+    const normalized = normalizeLocale(trimmedHeader);
+    const exact = exactMap.get(normalized);
+    if (exact !== undefined) {
+      return exact;
+    }
+
+    const [languagePrefix] = normalized.split('-', 1);
+    const prefixMatch = prefixMap.get(languagePrefix);
+    if (prefixMatch !== undefined) {
+      return prefixMatch;
+    }
+
+    return lookup.defaultLocale;
+  }
+
+  const parsedLocales = parseLanguageHeader(trimmedHeader);
 
   // Handle edge cases:
   // - No preferred locales provided.
-  // - Only one supported locale.
   // - Wildcard preference.
-  if (parsedLocales.size === 0 || (parsedLocales.size === 1 && parsedLocales.has('*'))) {
-    return supportedLocales[0];
-  }
-
-  // Create a map for case-insensitive lookup of supported locales.
-  // Keys are normalized (lowercase) locale values, values are original casing.
-  const normalizedSupportedLocales = new Map<string, string>();
-  for (const locale of supportedLocales) {
-    normalizedSupportedLocales.set(normalizeLocale(locale), locale);
+  if (parsedLocales.length === 0 || (parsedLocales.length === 1 && parsedLocales[0][0] === '*')) {
+    return lookup.defaultLocale;
   }
 
   // Iterate through parsed locales in descending order of quality.
   let bestMatch: string | undefined;
-  const qualityZeroNormalizedLocales = new Set<string>();
+  let qualityZeroNormalizedLocales: Set<string> | undefined;
+
   for (const [locale, quality] of parsedLocales) {
     const normalizedLocale = normalizeLocale(locale);
     if (quality === 0) {
+      qualityZeroNormalizedLocales ??= new Set<string>();
       qualityZeroNormalizedLocales.add(normalizedLocale);
       continue; // Skip locales with quality value of 0.
     }
 
     // Exact match found.
-    if (normalizedSupportedLocales.has(normalizedLocale)) {
-      return normalizedSupportedLocales.get(normalizedLocale);
+    const exactMatch = exactMap.get(normalizedLocale);
+    if (exactMatch !== undefined) {
+      return exactMatch;
     }
 
     // If an exact match is not found, try prefix matching (e.g., "en" matches "en-US").
@@ -165,11 +244,9 @@ export function getPreferredLocale(
     }
 
     const [languagePrefix] = normalizedLocale.split('-', 1);
-    for (const supportedLocale of normalizedSupportedLocales.keys()) {
-      if (supportedLocale.startsWith(languagePrefix)) {
-        bestMatch = normalizedSupportedLocales.get(supportedLocale);
-        break; // No need to continue searching for this locale.
-      }
+    const prefixMatch = prefixMap.get(languagePrefix);
+    if (prefixMatch !== undefined) {
+      bestMatch = prefixMatch;
     }
   }
 
@@ -178,11 +255,17 @@ export function getPreferredLocale(
   }
 
   // Return the first locale that is not quality zero.
-  for (const [normalizedLocale, locale] of normalizedSupportedLocales) {
-    if (!qualityZeroNormalizedLocales.has(normalizedLocale)) {
-      return locale;
+  if (qualityZeroNormalizedLocales !== undefined) {
+    for (const locale of locales) {
+      if (!qualityZeroNormalizedLocales.has(normalizeLocale(locale))) {
+        return locale;
+      }
     }
+
+    return undefined;
   }
+
+  return lookup.defaultLocale;
 }
 
 /**

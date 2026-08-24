@@ -200,6 +200,54 @@ describe('AngularAppEngine', () => {
     });
   });
 
+  describe('Localized app with root entry point', () => {
+    beforeAll(() => {
+      @Component({
+        selector: 'app-root-home',
+        template: 'Root Home works',
+      })
+      class RootHomeComponent {}
+
+      setAngularAppEngineManifest({
+        allowedHosts: ['example.com'],
+        entryPoints: {
+          '': async () => {
+            setAngularAppTestingManifest(
+              [{ path: '', component: RootHomeComponent }],
+              [{ path: '**', renderMode: RenderMode.Server }],
+            );
+
+            return {
+              ɵgetOrCreateAngularServerApp: getOrCreateAngularServerApp,
+              ɵdestroyAngularServerApp: destroyAngularServerApp,
+            };
+          },
+          it: createEntryPoint('it'),
+          en: createEntryPoint('en'),
+        },
+        supportedLocales: { 'it': 'it', 'en': 'en' },
+        basePath: '/',
+      });
+
+      appEngine = new AngularAppEngine();
+    });
+
+    it('should render the root application at "/" instead of redirecting when root entry point exists', async () => {
+      const request = new Request('https://example.com', {
+        headers: { 'Accept-Language': 'it' },
+      });
+      const response = await appEngine.handle(request);
+      expect(response?.status).toBe(200);
+      expect(await response?.text()).toContain('Root Home works');
+    });
+
+    it('should still serve localized entry points correctly', async () => {
+      const request = new Request('https://example.com/it/ssr');
+      const response = await appEngine.handle(request);
+      expect(await response?.text()).toContain('SSR works IT');
+    });
+  });
+
   describe('Localized app with single locale', () => {
     beforeAll(() => {
       setAngularAppEngineManifest({
