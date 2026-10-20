@@ -130,6 +130,40 @@ function augmentResolveModuleNames(
       });
     };
   }
+
+  if (host.resolveModuleNames) {
+    const baseResolveModuleNames = host.resolveModuleNames;
+    host.resolveModuleNames = function (moduleNames: string[], ...parameters) {
+      return moduleNames.map((name) => {
+        const result = baseResolveModuleNames.call(host, [name], ...parameters);
+
+        return resolvedModuleModifier(result[0] as ts.ResolvedModuleFull | undefined, name);
+      });
+    };
+  } else {
+    host.resolveModuleNames = function (
+      moduleNames: string[],
+      containingFile: string,
+      _reusedNames: string[] | undefined,
+      redirectedReference: ts.ResolvedProjectReference | undefined,
+      options: ts.CompilerOptions,
+      containingSourceFile?: ts.SourceFile,
+    ) {
+      return moduleNames.map((name) => {
+        const result = typescript.resolveModuleName(
+          name,
+          containingFile,
+          options,
+          host,
+          moduleResolutionCache,
+          redirectedReference,
+          containingSourceFile?.impliedNodeFormat,
+        ).resolvedModule;
+
+        return resolvedModuleModifier(result, name);
+      });
+    };
+  }
 }
 
 function normalizePath(path: string): string {
@@ -274,6 +308,26 @@ export function createAngularCompilerHost(
         redirectedReference,
         containingSourceFile.impliedNodeFormat,
       );
+    });
+  };
+  host.resolveModuleNames = (
+    moduleNames,
+    containingFile,
+    _reusedNames,
+    redirectedReference,
+    options,
+    containingSourceFile,
+  ) => {
+    return moduleNames.map((name) => {
+      return typescript.resolveModuleName(
+        name,
+        containingFile,
+        options,
+        host,
+        resolutionCache,
+        redirectedReference,
+        containingSourceFile?.impliedNodeFormat,
+      ).resolvedModule;
     });
   };
 

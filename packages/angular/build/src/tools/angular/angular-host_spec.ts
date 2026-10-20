@@ -20,7 +20,7 @@ describe('angular-host', () => {
   };
 
   describe('createAngularCompilerHost', () => {
-    it('wires resolveModuleNameLiterals with resolutionCache and packageJsonCache when fileReplacements is undefined', () => {
+    it('wires resolveModuleNameLiterals and resolveModuleNames with resolutionCache and packageJsonCache when fileReplacements is undefined', () => {
       const compilerOptions: ts.CompilerOptions = {
         target: ts.ScriptTarget.ES2022,
         module: ts.ModuleKind.ES2022,
@@ -48,6 +48,7 @@ describe('angular-host', () => {
       expect(resolutionCache).toBeDefined();
       expect(resolutionCache?.getPackageJsonInfoCache()).toBe(packageJsonCache);
       expect(host.resolveModuleNameLiterals).toBeDefined();
+      expect(host.resolveModuleNames).toBeDefined();
 
       const containingSourceFile = ts.createSourceFile(
         '/workspace/src/index.ts',
@@ -56,7 +57,7 @@ describe('angular-host', () => {
       );
       containingSourceFile.impliedNodeFormat = ts.ModuleKind.ESNext;
 
-      const resolved = host.resolveModuleNameLiterals?.(
+      const resolvedLiterals = host.resolveModuleNameLiterals?.(
         [ts.factory.createStringLiteral('./dep')],
         '/workspace/src/index.ts',
         undefined,
@@ -65,7 +66,7 @@ describe('angular-host', () => {
         undefined,
       );
 
-      expect(resolved).toEqual([
+      expect(resolvedLiterals).toEqual([
         {
           resolvedModule: {
             resolvedFileName: '/workspace/src/dep.ts',
@@ -83,9 +84,36 @@ describe('angular-host', () => {
         undefined,
         ts.ModuleKind.ESNext,
       );
+
+      resolveSpy.calls.reset();
+      const resolvedNames = host.resolveModuleNames?.(
+        ['./dep'],
+        '/workspace/src/index.ts',
+        undefined,
+        undefined,
+        compilerOptions,
+        containingSourceFile,
+      );
+
+      expect(resolvedNames).toEqual([
+        {
+          resolvedFileName: '/workspace/src/dep.ts',
+          isExternalLibraryImport: false,
+          extension: ts.Extension.Ts,
+        },
+      ]);
+      expect(resolveSpy).toHaveBeenCalledOnceWith(
+        './dep',
+        '/workspace/src/index.ts',
+        compilerOptions,
+        host,
+        resolutionCache,
+        undefined,
+        ts.ModuleKind.ESNext,
+      );
     });
 
-    it('wires resolveModuleNameLiterals with resolutionCache when fileReplacements is empty', () => {
+    it('wires resolveModuleNameLiterals and resolveModuleNames with resolutionCache when fileReplacements is empty', () => {
       const compilerOptions: ts.CompilerOptions = {
         target: ts.ScriptTarget.ES2022,
       };
@@ -108,6 +136,7 @@ describe('angular-host', () => {
       );
 
       expect(host.resolveModuleNameLiterals).toBeDefined();
+      expect(host.resolveModuleNames).toBeDefined();
       host.resolveModuleNameLiterals?.(
         [ts.factory.createStringLiteral('./missing')],
         '/workspace/src/index.ts',
@@ -126,9 +155,28 @@ describe('angular-host', () => {
         undefined,
         undefined,
       );
+
+      resolveSpy.calls.reset();
+      host.resolveModuleNames?.(
+        ['./missing'],
+        '/workspace/src/index.ts',
+        undefined,
+        undefined,
+        compilerOptions,
+      );
+
+      expect(resolveSpy).toHaveBeenCalledOnceWith(
+        './missing',
+        '/workspace/src/index.ts',
+        compilerOptions,
+        host,
+        resolutionCache,
+        undefined,
+        undefined,
+      );
     });
 
-    it('applies fileReplacements while still using resolutionCache', () => {
+    it('applies fileReplacements in both resolveModuleNameLiterals and resolveModuleNames while using resolutionCache', () => {
       const compilerOptions: ts.CompilerOptions = {
         target: ts.ScriptTarget.ES2022,
       };
@@ -159,7 +207,7 @@ describe('angular-host', () => {
         ts.ScriptTarget.ES2022,
       );
 
-      const resolved = host.resolveModuleNameLiterals?.(
+      const resolvedLiterals = host.resolveModuleNameLiterals?.(
         [ts.factory.createStringLiteral('./env')],
         '/workspace/src/index.ts',
         undefined,
@@ -168,13 +216,40 @@ describe('angular-host', () => {
         undefined,
       );
 
-      expect(resolved).toEqual([
+      expect(resolvedLiterals).toEqual([
         {
           resolvedModule: {
             resolvedFileName: '/workspace/src/env.prod.ts',
             isExternalLibraryImport: false,
             extension: ts.Extension.Ts,
           },
+        },
+      ]);
+      expect(resolveSpy).toHaveBeenCalledOnceWith(
+        './env',
+        '/workspace/src/index.ts',
+        compilerOptions,
+        host,
+        resolutionCache,
+        undefined,
+        undefined,
+      );
+
+      resolveSpy.calls.reset();
+      const resolvedNames = host.resolveModuleNames?.(
+        ['./env'],
+        '/workspace/src/index.ts',
+        undefined,
+        undefined,
+        compilerOptions,
+        containingSourceFile,
+      );
+
+      expect(resolvedNames).toEqual([
+        {
+          resolvedFileName: '/workspace/src/env.prod.ts',
+          isExternalLibraryImport: false,
+          extension: ts.Extension.Ts,
         },
       ]);
       expect(resolveSpy).toHaveBeenCalledOnceWith(
