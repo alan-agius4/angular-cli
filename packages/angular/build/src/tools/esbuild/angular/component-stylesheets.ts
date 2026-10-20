@@ -31,6 +31,7 @@ export type ComponentStylesheetResult = BundleContextResult & {
 export class ComponentStylesheetBundler {
   readonly #fileContexts = new MemoryCache<BundlerContext>();
   readonly #inlineContexts = new MemoryCache<BundlerContext>();
+  readonly #staleInlineEntries = new Set<string>();
   readonly #loadCache = new MemoryLoadResultCache();
 
   /**
@@ -120,14 +121,10 @@ export class ComponentStylesheetBundler {
     hasher.update(data);
     hasher.update(externalId ?? '');
     const id = hasher.digest();
-    const cacheKey = [
-      language,
-      id,
-      this.options.sourcemap ? filename : path.dirname(filename),
-    ].join(';');
+    const entry = [language, id, filename].join(';');
+    this.#staleInlineEntries.delete(entry);
 
-    const bundlerContext = await this.#inlineContexts.getOrCreate(cacheKey, () => {
-      const entry = [language, id, filename].join(';');
+    const bundlerContext = await this.#inlineContexts.getOrCreate(entry, () => {
       const namespace = 'angular:styles/component';
 
       return new BundlerContext(
@@ -217,8 +214,25 @@ export class ComponentStylesheetBundler {
         entries.push(entry);
       }
     }
-    for (const bundler of this.#inlineContexts.values()) {
+    const previousStaleEntries = new Set(this.#staleInlineEntries);
+    this.#staleInlineEntries.clear();
+
+    for (const [entry, bundler] of this.#inlineContexts.entries()) {
+      if (previousStaleEntries.has(entry)) {
+        this.#inlineContexts.delete(entry);
+        void bundler.dispose().catch(() => {});
+        continue;
+      }
+
       bundler.invalidate(normalizedFiles);
+
+      // Entry is format: [language, id, filename].join(';')
+      const firstSemi = entry.indexOf(';');
+      const secondSemi = firstSemi !== -1 ? entry.indexOf(';', firstSemi + 1) : -1;
+      const filename = secondSemi !== -1 ? entry.slice(secondSemi + 1) : '';
+      if (filename && normalizedFiles.has(path.normalize(filename))) {
+        this.#staleInlineEntries.add(entry);
+      }
     }
 
     return entries;
@@ -229,8 +243,10 @@ export class ComponentStylesheetBundler {
     for (const context of this.#fileContexts.values()) {
       files.push(...context.watchFiles);
     }
-    for (const context of this.#inlineContexts.values()) {
-      files.push(...context.watchFiles);
+    for (const [entry, context] of this.#inlineContexts.entries()) {
+      if (!this.#staleInlineEntries.has(entry)) {
+        files.push(...context.watchFiles);
+      }
     }
 
     return files;
@@ -240,6 +256,7 @@ export class ComponentStylesheetBundler {
     const contexts = [...this.#fileContexts.values(), ...this.#inlineContexts.values()];
     this.#fileContexts.clear();
     this.#inlineContexts.clear();
+    this.#staleInlineEntries.clear();
     this.#loadCache.clear();
 
     await Promise.allSettled(contexts.map((context) => context.dispose()));
