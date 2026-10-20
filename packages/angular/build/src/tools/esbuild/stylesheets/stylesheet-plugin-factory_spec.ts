@@ -137,7 +137,7 @@ describe('StylesheetPluginFactory dir-dependency caching', () => {
     expect(result2?.watchFiles).not.toContain(fileC);
   });
 
-  it('should share cached dir-dependency glob results across StylesheetPluginFactory instances sharing a LoadResultCache and invalidate on cache.invalidate', async () => {
+  it('should share cached dir-dependency glob results via LoadResultCache and clear on invalidate', async () => {
     const scanDir = await mkdtemp(join(tempRoot, 'scan-shared-'));
     const fileA = join(scanDir, 'a.html');
     await writeFile(fileA, '<div>A</div>');
