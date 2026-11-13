@@ -71,10 +71,6 @@ export async function compileLibrary(
       effectiveModifiedFiles = merged;
     }
 
-    if (effectiveModifiedFiles && effectiveModifiedFiles.size > 0) {
-      await compilationInstance.update?.(effectiveModifiedFiles);
-    }
-
     const stylesheetWarnings: PartialMessage[] = [];
     const stylesheetErrors: PartialMessage[] = [];
     const failedFiles = new Set<string>();

@@ -8,7 +8,7 @@
 
 import assert from 'node:assert';
 import path from 'node:path';
-import type { OutputChunk, Plugin, RolldownOutput, RolldownPluginOption } from 'rolldown';
+import type { Plugin, RolldownOutput, RolldownPluginOption } from 'rolldown';
 import { loadRolldown } from '../../../utils/load-rolldown';
 import { toPosixPath } from '../../../utils/path';
 import type { BundleResult, NormalizedEntryPoint, NormalizedLibraryOptions } from '../types';
@@ -372,6 +372,7 @@ function createMemoryFileLoaderPlugin(
   includeMap: boolean,
 ): Plugin {
   const isDts = extensions === DTS_EXTENSIONS;
+  const resolutionCache = new Map<string, { id: string; external: boolean } | null>();
 
   return {
     name: 'memory-file-loader',
@@ -390,24 +391,47 @@ function createMemoryFileLoaderPlugin(
           return { id, external: true };
         }
 
-        const resolved = id[0] === '.' ? path.posix.join(path.posix.dirname(importer), id) : id;
-        const normalizedResolved = resolved.replace(/\/+$/, '');
-
-        if (files.has(normalizedResolved)) {
-          return { id: normalizedResolved, external: false };
+        const importerDir = path.posix.dirname(importer);
+        const cacheKey = `${importerDir}\0${id}`;
+        const cached = resolutionCache.get(cacheKey);
+        if (cached !== undefined) {
+          return cached ?? undefined;
         }
 
-        const base = normalizedResolved.replace(/\.m?js$/, '');
+        const resolved =
+          id[0] === '.' ? path.posix.join(importerDir, id) : path.posix.normalize(id);
+        const normalizedResolved = resolved.endsWith('/') ? resolved.slice(0, -1) : resolved;
+
+        if (files.has(normalizedResolved)) {
+          const result = { id: normalizedResolved, external: false };
+          resolutionCache.set(cacheKey, result);
+
+          return result;
+        }
+
+        const base = normalizedResolved.endsWith('.js')
+          ? normalizedResolved.slice(0, -3)
+          : normalizedResolved.endsWith('.mjs')
+            ? normalizedResolved.slice(0, -4)
+            : normalizedResolved;
         if (isDts && normalizedResolved.endsWith('.mjs') && files.has(`${base}.d.mts`)) {
-          return { id: `${base}.d.mts`, external: false };
+          const result = { id: `${base}.d.mts`, external: false };
+          resolutionCache.set(cacheKey, result);
+
+          return result;
         }
 
         for (const ext of extensions) {
           const candidate = base + ext;
           if (files.has(candidate)) {
-            return { id: candidate, external: false };
+            const result = { id: candidate, external: false };
+            resolutionCache.set(cacheKey, result);
+
+            return result;
           }
         }
+
+        resolutionCache.set(cacheKey, null);
 
         return undefined;
       },
@@ -427,38 +451,82 @@ function createMemoryFileLoaderPlugin(
 }
 
 /**
+ * Pre-extracted metadata for a Rolldown output chunk to avoid repeated NAPI getter calls.
+ */
+interface ChunkMetadata {
+  readonly fileName: string;
+  readonly outputFilePath: string;
+  readonly name: string;
+  readonly posixModuleIds: readonly string[];
+  readonly allImports: readonly string[];
+}
+
+/**
  * Processes Rolldown output assets and chunks, extracting emitted files and computing
  * the transitive sets of module IDs, output file paths, and tslib imports belonging to
  * each entry point bundle.
  *
  * @param output The array of output chunks and assets from Rolldown.
  * @param dir The destination POSIX output directory prefix.
+ * @param isDts Whether the output is for TypeScript declaration (.d.ts) bundles.
  * @returns The processed multi-bundle output.
  */
 function processRolldownOutput(
   output: RolldownOutput['output'],
   dir: string,
+  isDts: boolean,
 ): Omit<MultiBundleOutput, 'warnings'> {
   const filesToEmit: MemoryOutputFile[] = [];
   const bundles = new Map<string, EntryBundleOutput>();
-  const chunksByFileName = new Map<string, OutputChunk>();
+  const chunksByFileName = new Map<string, ChunkMetadata>();
   const outputFileNames = new Set<string>();
-  const entryChunks: OutputChunk[] = [];
+  const entryChunks: ChunkMetadata[] = [];
 
   for (const item of output) {
-    outputFileNames.add(item.fileName);
-    filesToEmit.push(
-      createMemoryOutputFile(
-        path.posix.join(dir, item.fileName),
-        item.type === 'chunk' ? item.code : item.source,
-      ),
-    );
-
     if (item.type === 'chunk') {
-      chunksByFileName.set(item.fileName, item);
-      if (item.isEntry) {
-        entryChunks.push(item);
+      const moduleIds = item.moduleIds;
+      if (isDts && moduleIds.length === 1 && moduleIds[0] === '\0rolldown/runtime.js') {
+        continue;
       }
+
+      const fileName = item.fileName;
+      const outputFilePath = path.posix.join(dir, fileName);
+      outputFileNames.add(fileName);
+      filesToEmit.push(createMemoryOutputFile(outputFilePath, item.code));
+
+      const posixModuleIds: string[] = [];
+      for (const modId of moduleIds) {
+        if (modId[0] !== '\0') {
+          posixModuleIds.push(toPosixPath(modId));
+        }
+      }
+
+      const imports = item.imports;
+      const dynamicImports = item.dynamicImports;
+      const allImports =
+        dynamicImports.length === 0
+          ? imports
+          : imports.length === 0
+            ? dynamicImports
+            : [...imports, ...dynamicImports];
+
+      const isEntry = item.isEntry;
+      const chunkMeta: ChunkMetadata = {
+        fileName,
+        outputFilePath,
+        name: isEntry ? item.name : '',
+        posixModuleIds,
+        allImports,
+      };
+
+      chunksByFileName.set(fileName, chunkMeta);
+      if (isEntry) {
+        entryChunks.push(chunkMeta);
+      }
+    } else {
+      const fileName = item.fileName;
+      outputFileNames.add(fileName);
+      filesToEmit.push(createMemoryOutputFile(path.posix.join(dir, fileName), item.source));
     }
   }
 
@@ -467,21 +535,18 @@ function processRolldownOutput(
     const outputFiles = new Set<string>();
     let hasTslibImport = false;
 
-    const visited = new Set<OutputChunk>([entryChunk]);
+    const visited = new Set<ChunkMetadata>([entryChunk]);
     for (const chunk of visited) {
-      outputFiles.add(path.posix.join(dir, chunk.fileName));
-      const mapFileName = `${chunk.fileName}.map`;
-      if (outputFileNames.has(mapFileName)) {
-        outputFiles.add(path.posix.join(dir, mapFileName));
+      outputFiles.add(chunk.outputFilePath);
+      if (outputFileNames.has(`${chunk.fileName}.map`)) {
+        outputFiles.add(`${chunk.outputFilePath}.map`);
       }
 
-      for (const modId of chunk.moduleIds) {
-        if (modId[0] !== '\0') {
-          moduleIds.add(toPosixPath(modId));
-        }
+      for (const modId of chunk.posixModuleIds) {
+        moduleIds.add(modId);
       }
 
-      for (const depFile of [...chunk.imports, ...chunk.dynamicImports]) {
+      for (const depFile of chunk.allImports) {
         if (depFile === 'tslib') {
           hasTslibImport = true;
         }
@@ -562,12 +627,14 @@ async function executeMultiBundle(
       entryFileNames: `[name].${extension}`,
       chunkFileNames: `[name]-[hash].${extension}`,
       sourcemap,
+      sourcemapExcludeSources: isDts,
+      sourcemapIgnoreList: false,
       hoistTransitiveImports: false,
       comments: { jsdoc: isDts, legal: true, annotation: !isDts },
     });
 
     return {
-      ...processRolldownOutput(output, dir),
+      ...processRolldownOutput(output, dir, isDts),
       warnings,
     };
   } finally {
@@ -637,6 +704,12 @@ async function bundleAllDts(
     cjsDefault: false,
     sideEffects: false,
   });
+  // Disable `generateBundle`: Rolldown already omits sourcemaps when `sourcemap: false` and omits
+  // `sourcesContent` in Rust via `sourcemapExcludeSources: true` when `sourcemap: true`, while
+  // `processRolldownOutput` filters out any `\0rolldown/runtime.js` chunk directly. Disabling this
+  // hook avoids materializing Rolldown's mutable `OutputBundle` proxy and copying every `.d.ts`
+  // chunk across NAPI.
+  fakeJsPlugin.generateBundle = undefined;
 
   return executeMultiBundle(
     resolveEntryInputMap(entryPoints, true),

@@ -49,6 +49,10 @@ export class JitCompilation extends TypeScriptCompilation {
     const { constructorParametersDownlevelTransform } =
       await import('@angular/compiler-cli/private/tooling');
 
+    if (hostOptions.modifiedFiles) {
+      this.invalidateFiles(hostOptions.modifiedFiles);
+    }
+
     // Load the compiler configuration and transform as needed
     const {
       compilerOptions,
@@ -57,10 +61,6 @@ export class JitCompilation extends TypeScriptCompilation {
       warnings,
       tsConfigFiles,
     } = await this.loadConfiguration(tsconfig, compilerOptionOverrides, buildType);
-
-    if (hostOptions.modifiedFiles) {
-      this.invalidateFiles(hostOptions.modifiedFiles);
-    }
 
     // Create Angular compiler host
     const host = createAngularCompilerHost(

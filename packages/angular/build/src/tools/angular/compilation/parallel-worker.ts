@@ -25,6 +25,7 @@ export interface InitRequest {
   browserOnlyBuild: boolean;
   tsconfig: string;
   fileReplacements?: Record<string, string>;
+  modifiedFiles?: Set<string>;
   compilerOptionOverrides?: CompilerOptionOverrides;
   buildType?: 'application' | 'library';
   stylesheetPort: MessagePort;
@@ -41,7 +42,12 @@ export async function initialize(request: InitRequest): Promise<AngularCompilati
   activeWebWorkerPort?.close();
   activeWebWorkerPort = request.webWorkerPort;
 
-  const currentModifiedFiles = new Set(modifiedFiles);
+  const currentModifiedFiles =
+    modifiedFiles.size > 0 && request.modifiedFiles
+      ? new Set([...modifiedFiles, ...request.modifiedFiles])
+      : request.modifiedFiles
+        ? new Set(request.modifiedFiles)
+        : new Set(modifiedFiles);
   modifiedFiles.clear();
 
   let success = false;

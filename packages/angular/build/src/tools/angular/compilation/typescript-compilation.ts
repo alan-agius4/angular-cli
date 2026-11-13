@@ -24,9 +24,20 @@ export interface TransformedConfiguration {
   tsConfigFiles: readonly string[];
 }
 
+interface CachedConfiguration {
+  readonly tsconfig: string;
+  readonly buildType: 'application' | 'library';
+  readonly options: ng.CompilerOptions;
+  readonly rootNames: string[];
+  readonly errors: ts.Diagnostic[];
+  readonly tsConfigFiles: readonly string[];
+  readonly tsConfigFilesSet: ReadonlySet<string>;
+}
+
 export abstract class TypeScriptCompilation extends AngularCompilation {
   static #angularCompilerCliModule?: typeof ng;
   readonly #extendedConfigCache = new Map<string, ts.ExtendedConfigCacheEntry>();
+  #cachedConfiguration?: CachedConfiguration;
 
   static async loadCompilerCli(): Promise<typeof ng> {
     TypeScriptCompilation.#angularCompilerCliModule ??= await import('@angular/compiler-cli');
@@ -39,41 +50,75 @@ export abstract class TypeScriptCompilation extends AngularCompilation {
     compilerOptionOverrides?: CompilerOptionOverrides,
     buildType: 'application' | 'library' = 'application',
   ): Promise<TransformedConfiguration> {
-    const { readConfiguration } = await TypeScriptCompilation.loadCompilerCli();
+    const normalizedTsconfig = toPosixPath(tsconfig);
+    let originalCompilerOptions: ng.CompilerOptions;
+    let originalRootNames: string[];
+    let errors: ts.Diagnostic[];
+    let tsConfigFiles: readonly string[];
 
-    const {
-      options: originalCompilerOptions,
-      rootNames: originalRootNames,
-      errors,
-    } = profileSync('NG_READ_CONFIG', () =>
-      readConfiguration(
-        tsconfig,
-        {
-          // Angular specific configuration defaults and overrides to ensure a functioning compilation.
-          suppressOutputPathCheck: true,
-          outDir: undefined,
-          sourceMap: false,
-          ...(buildType === 'library'
-            ? { declaration: true }
-            : {
-                declaration: false,
-                declarationMap: false,
-              }),
-          allowEmptyCodegenFiles: false,
-          annotationsAs: 'decorators',
-          enableResourceInlining: false,
-          supportTestBed: false,
-          supportJitMode: false,
-          // Disable removing of comments as TS is quite aggressive with these and can
-          // remove important annotations, such as /* @__PURE__ */ and comments like /* vite-ignore */.
-          removeComments: false,
-        },
-        undefined,
-        this.#extendedConfigCache,
-      ),
-    );
+    if (
+      this.#cachedConfiguration &&
+      this.#cachedConfiguration.tsconfig === normalizedTsconfig &&
+      this.#cachedConfiguration.buildType === buildType
+    ) {
+      ({
+        options: originalCompilerOptions,
+        rootNames: originalRootNames,
+        errors,
+        tsConfigFiles,
+      } = this.#cachedConfiguration);
+    } else {
+      const { readConfiguration } = await TypeScriptCompilation.loadCompilerCli();
 
-    const tsConfigFiles = [toPosixPath(tsconfig), ...this.#extendedConfigCache.keys()];
+      ({
+        options: originalCompilerOptions,
+        rootNames: originalRootNames,
+        errors,
+      } = profileSync('NG_READ_CONFIG', () =>
+        readConfiguration(
+          tsconfig,
+          {
+            // Angular specific configuration defaults and overrides to ensure a functioning compilation.
+            suppressOutputPathCheck: true,
+            outDir: undefined,
+            sourceMap: false,
+            ...(buildType === 'library'
+              ? { declaration: true }
+              : {
+                  declaration: false,
+                  declarationMap: false,
+                }),
+            allowEmptyCodegenFiles: false,
+            annotationsAs: 'decorators',
+            enableResourceInlining: false,
+            supportTestBed: false,
+            supportJitMode: false,
+            // Disable removing of comments as TS is quite aggressive with these and can
+            // remove important annotations, such as /* @__PURE__ */ and comments like /* vite-ignore */.
+            removeComments: false,
+          },
+          undefined,
+          this.#extendedConfigCache,
+        ),
+      ));
+
+      tsConfigFiles = [normalizedTsconfig, ...this.#extendedConfigCache.keys()];
+      const tsConfigFilesSet = new Set<string>();
+      for (const configFile of tsConfigFiles) {
+        tsConfigFilesSet.add(configFile);
+        tsConfigFilesSet.add(configFile.toLowerCase());
+      }
+
+      this.#cachedConfiguration = {
+        tsconfig: normalizedTsconfig,
+        buildType,
+        options: originalCompilerOptions,
+        rootNames: originalRootNames,
+        errors,
+        tsConfigFiles,
+        tsConfigFilesSet,
+      };
+    }
 
     let rootNames = originalRootNames;
     let fallbackRootNames: string[] | undefined;
@@ -84,29 +129,37 @@ export abstract class TypeScriptCompilation extends AngularCompilation {
       const rootFilesSet = new Set(
         compilerOptionOverrides.rootFiles.map((file) => canonicalizePath(toPosixPath(file))),
       );
-      const fallbackFilesSet = new Set(rootFilesSet);
-      for (const file of originalRootNames) {
-        const canonicalFile = canonicalizePath(toPosixPath(file));
-        // Ambient declaration files (.d.ts) are not imported directly, so they must always be
-        // retained from the tsconfig to preserve global type definitions.
-        if (/\.d\.[cm]?ts$/i.test(file)) {
-          rootFilesSet.add(canonicalFile);
+      if (buildType === 'application') {
+        const fallbackFilesSet = new Set(rootFilesSet);
+        for (const file of originalRootNames) {
+          const canonicalFile = canonicalizePath(toPosixPath(file));
+          // Ambient declaration files (.d.ts) are not imported directly, so they must always be
+          // retained from the tsconfig to preserve global type definitions.
+          if (/\.d\.[cm]?ts$/i.test(file)) {
+            rootFilesSet.add(canonicalFile);
+          }
+          fallbackFilesSet.add(canonicalFile);
         }
-        fallbackFilesSet.add(canonicalFile);
+        // For application builds (including unit tests), preserve the full set of tsconfig root
+        // files as a fallback in case the AOT compilation encounters a non-standalone component
+        // whose declaring NgModule is not directly imported by the entry points. Note that when a
+        // test tsconfig uses broad globs (e.g., `src/**/*.ts`), this fallback set will also include
+        // non-included spec files; this is an acceptable trade-off to keep compilation agnostic of
+        // test-file naming conventions and only occurs for legacy non-standalone components lacking
+        // explicit NgModule imports. Library builds are excluded because all public NgModules must
+        // be reachable from the library entry points and should never resolve compilation scope from
+        // unexported tsconfig files.
+        if (fallbackFilesSet.size > rootFilesSet.size) {
+          fallbackRootNames = [...fallbackFilesSet];
+        }
+      } else {
+        for (const file of originalRootNames) {
+          if (/\.d\.[cm]?ts$/i.test(file)) {
+            rootFilesSet.add(canonicalizePath(toPosixPath(file)));
+          }
+        }
       }
       rootNames = [...rootFilesSet];
-      // For application builds (including unit tests), preserve the full set of tsconfig root
-      // files as a fallback in case the AOT compilation encounters a non-standalone component
-      // whose declaring NgModule is not directly imported by the entry points. Note that when a
-      // test tsconfig uses broad globs (e.g., `src/**/*.ts`), this fallback set will also include
-      // non-included spec files; this is an acceptable trade-off to keep compilation agnostic of
-      // test-file naming conventions and only occurs for legacy non-standalone components lacking
-      // explicit NgModule imports. Library builds are excluded because all public NgModules must
-      // be reachable from the library entry points and should never resolve compilation scope from
-      // unexported tsconfig files.
-      if (buildType === 'application' && fallbackFilesSet.size > rootFilesSet.size) {
-        fallbackRootNames = [...fallbackFilesSet];
-      }
     }
 
     const { compilerOptions, warnings } = transformCompilerOptions(
@@ -132,7 +185,21 @@ export abstract class TypeScriptCompilation extends AngularCompilation {
   protected invalidateFiles(files: Iterable<string>): void {
     for (const file of files) {
       const posixFile = toPosixPath(file);
-      this.sourceFiles.delete(posixFile);
+      const wasCachedSourceFile = this.sourceFiles.delete(posixFile);
+      const lowerPosixFile = posixFile.toLowerCase();
+
+      if (this.#cachedConfiguration) {
+        if (
+          this.#cachedConfiguration.tsConfigFilesSet.has(posixFile) ||
+          this.#cachedConfiguration.tsConfigFilesSet.has(lowerPosixFile) ||
+          /\.d\.[cm]?ts$/i.test(posixFile) ||
+          (this.#cachedConfiguration.buildType === 'application' &&
+            !wasCachedSourceFile &&
+            /\.[cm]?[jt]sx?$/i.test(posixFile))
+        ) {
+          this.#cachedConfiguration = undefined;
+        }
+      }
 
       if (this.#extendedConfigCache.size === 0) {
         continue;
@@ -144,7 +211,7 @@ export abstract class TypeScriptCompilation extends AngularCompilation {
 
       // Check with lowercased key because TypeScript lowercases the keys
       // of the extended config cache on case-insensitive operating systems.
-      this.#extendedConfigCache.delete(posixFile.toLowerCase());
+      this.#extendedConfigCache.delete(lowerPosixFile);
     }
   }
 

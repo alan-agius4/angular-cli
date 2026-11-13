@@ -291,6 +291,57 @@ describe('AngularCompilation', () => {
       expect(mockReadConfig).toHaveBeenCalledTimes(2);
       expect(mockReadConfig.calls.argsFor(1)[3]).toBe(passedCache);
     });
+
+    it('caches readConfiguration result across loads and invalidates when tsconfig or declaration files change', async () => {
+      const compilation = new MockTypeScriptCompilation();
+      const mockReadConfig = jasmine.createSpy('readConfiguration').and.returnValue({
+        options: { target: ts.ScriptTarget.ES2022 },
+        rootNames: ['/src/public-api.ts', '/src/env.d.ts'],
+        errors: [],
+      });
+      spyOn(TypeScriptCompilation, 'loadCompilerCli').and.resolveTo({
+        readConfiguration: mockReadConfig,
+      } as unknown as typeof import('@angular/compiler-cli'));
+
+      await compilation.testLoadConfiguration(
+        '/workspace/tsconfig.lib.json',
+        { rootFiles: ['/src/public-api.ts'] },
+        'library',
+      );
+      expect(mockReadConfig).toHaveBeenCalledTimes(1);
+
+      // Modifying a regular .ts source file in library mode keeps the cached configuration
+      await compilation.update?.(new Set(['/src/public-api.ts']));
+      const secondResult = await compilation.testLoadConfiguration(
+        '/workspace/tsconfig.lib.json',
+        { rootFiles: ['/src/public-api.ts', '/src/secondary.ts'] },
+        'library',
+      );
+      expect(mockReadConfig).toHaveBeenCalledTimes(1);
+      expect(secondResult.rootNames).toEqual([
+        '/src/public-api.ts',
+        '/src/secondary.ts',
+        '/src/env.d.ts',
+      ]);
+
+      // Modifying an ambient .d.ts file invalidates the cached configuration
+      await compilation.update?.(new Set(['/src/new-ambient.d.ts']));
+      await compilation.testLoadConfiguration(
+        '/workspace/tsconfig.lib.json',
+        { rootFiles: ['/src/public-api.ts'] },
+        'library',
+      );
+      expect(mockReadConfig).toHaveBeenCalledTimes(2);
+
+      // Modifying the tsconfig file itself invalidates the cached configuration
+      await compilation.update?.(new Set(['/workspace/tsconfig.lib.json']));
+      await compilation.testLoadConfiguration(
+        '/workspace/tsconfig.lib.json',
+        { rootFiles: ['/src/public-api.ts'] },
+        'library',
+      );
+      expect(mockReadConfig).toHaveBeenCalledTimes(3);
+    });
   });
 
   describe('createAngularCompilation', () => {

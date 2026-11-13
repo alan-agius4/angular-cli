@@ -96,6 +96,7 @@ export class ParallelCompilation extends AngularCompilation {
       const result = await this.#worker.run(
         {
           fileReplacements: hostOptions.fileReplacements,
+          modifiedFiles: hostOptions.modifiedFiles,
           tsconfig,
           jit: this.jit,
           browserOnlyBuild: this.browserOnlyBuild,

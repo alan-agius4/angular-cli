@@ -108,6 +108,10 @@ export class AotCompilation extends TypeScriptCompilation {
     // Dynamically load the Angular compiler CLI package
     const { NgtscProgram, OptimizeFor } = await TypeScriptCompilation.loadCompilerCli();
 
+    if (hostOptions.modifiedFiles) {
+      this.invalidateFiles(hostOptions.modifiedFiles);
+    }
+
     // Load the compiler configuration and transform as needed
     const {
       compilerOptions,
@@ -138,10 +142,7 @@ export class AotCompilation extends TypeScriptCompilation {
 
     let staleSourceFiles;
     let clearPackageJsonCache = false;
-    if (hostOptions.modifiedFiles) {
-      this.invalidateFiles(hostOptions.modifiedFiles);
-
-      if (this.#state && hostOptions.modifiedFiles.size > 0) {
+    if (this.#state && hostOptions.modifiedFiles?.size) {
         for (const modifiedFile of hostOptions.modifiedFiles) {
           // Clear package.json cache if a node modules file was modified
           if (!clearPackageJsonCache && modifiedFile.includes('node_modules')) {
@@ -166,7 +167,6 @@ export class AotCompilation extends TypeScriptCompilation {
             this.#state.filesWithoutDtsSignature,
           );
         }
-      }
     }
 
     // Create Angular compiler host
