@@ -326,7 +326,51 @@ describe('generatePackageManifests', () => {
     });
   });
 
-  it('should preserve existing user tslib declaration when hasTslibImport is true', async () => {
+  it('should normalize root conditional exports objects without leading "." into exports["."]', async () => {
+    const options = createOptions({
+      packageJson: {
+        name: 'my-lib',
+        version: '1.0.0',
+        exports: {
+          development: './src/debug.ts',
+          default: './src/public-api.ts',
+        },
+      },
+    });
+
+    const files = await generatePackageManifests(options, false);
+    const result = getRootPackageJson(files);
+
+    expect(result.exports).toEqual({
+      './package.json': { default: './package.json' },
+      '.': {
+        types: './types/my-lib.d.ts',
+        development: './src/debug.ts',
+        default: './fesm2022/my-lib.mjs',
+      },
+    });
+  });
+
+  it('should strip ngPackage from emitted package.json', async () => {
+    const options = createOptions({
+      packageJson: {
+        name: 'my-lib',
+        version: '1.0.0',
+        ngPackage: {
+          lib: {
+            entryFile: 'src/public-api.ts',
+          },
+        },
+      },
+    });
+
+    const files = await generatePackageManifests(options, false);
+    const result = getRootPackageJson(files);
+
+    expect(result['ngPackage']).toBeUndefined();
+  });
+
+  it('should preserve existing user tslib declaration in dependencies or peerDependencies when hasTslibImport is true', async () => {
     const filesInDeps = await generatePackageManifests(
       createOptions({
         workspaceRoot: process.cwd(),
@@ -342,6 +386,26 @@ describe('generatePackageManifests', () => {
       true,
     );
     expect(getRootPackageJson(filesInDeps).dependencies).toEqual({
+      tslib: '^2.0.0',
+    });
+
+    const filesInPeerDeps = await generatePackageManifests(
+      createOptions({
+        workspaceRoot: process.cwd(),
+        packageJson: {
+          name: 'my-lib',
+          version: '1.0.0',
+          peerDependencies: {
+            tslib: '^2.0.0',
+          },
+        },
+      }),
+      false,
+      true,
+    );
+    const peerDepsPkg = getRootPackageJson(filesInPeerDeps);
+    expect(peerDepsPkg.dependencies).toBeUndefined();
+    expect(peerDepsPkg.peerDependencies).toEqual({
       tslib: '^2.0.0',
     });
   });

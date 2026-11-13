@@ -744,6 +744,83 @@ describe('entry-points pipeline', () => {
       expect(options.entryPoints.get('.')?.bundleName).toBe('renamed-scope-my-lib');
     });
 
+    it('should transitively invalidate remaining entry points whose module IDs overlapped with a removed entry point', () => {
+      const initialEntryPoints = normalizeEntryPoints(
+        {
+          '.': './src/public-api.ts',
+          './secondary': './secondary/src/public-api.ts',
+          './tertiary': './tertiary/src/public-api.ts',
+          './unrelated': './unrelated/src/public-api.ts',
+        },
+        projectRoot,
+        packageJsonPath,
+        packageName,
+      );
+
+      const options = {
+        entryPoints: initialEntryPoints,
+        projectRoot,
+        packageName,
+        packageJsonPath,
+        tsConfigPath,
+        assets: [],
+      } as unknown as NormalizedLibraryOptions;
+
+      const buildState = new BuilderState(options);
+      const sharedWithSecondaryJs = join(projectRoot, 'src/shared-ab.js');
+      const sharedWithTertiaryDts = join(projectRoot, 'src/shared-ac.d.ts');
+
+      buildState.previousBundleResults.set(
+        '.',
+        createBundleResult({
+          esmModuleIds: new Set([join(projectRoot, 'src/public-api.js'), sharedWithSecondaryJs]),
+          dtsModuleIds: new Set([join(projectRoot, 'src/public-api.d.ts'), sharedWithTertiaryDts]),
+        }),
+      );
+      buildState.previousBundleResults.set(
+        'secondary',
+        createBundleResult({
+          esmModuleIds: new Set([
+            join(projectRoot, 'secondary/src/public-api.js'),
+            sharedWithSecondaryJs,
+          ]),
+        }),
+      );
+      buildState.previousBundleResults.set(
+        'tertiary',
+        createBundleResult({
+          dtsModuleIds: new Set([
+            join(projectRoot, 'tertiary/src/public-api.d.ts'),
+            sharedWithTertiaryDts,
+          ]),
+        }),
+      );
+      buildState.previousBundleResults.set(
+        'unrelated',
+        createBundleResult({
+          esmModuleIds: new Set([join(projectRoot, 'unrelated/src/public-api.js')]),
+          dtsModuleIds: new Set([join(projectRoot, 'unrelated/src/public-api.d.ts')]),
+        }),
+      );
+
+      const updatedPackageJson: PackageJsonData = {
+        name: packageName,
+        exports: {
+          '.': './src/public-api.ts',
+          './tertiary': './tertiary/src/public-api.ts',
+          './unrelated': './unrelated/src/public-api.ts',
+        },
+      };
+
+      updateWatchedEntryPoints(updatedPackageJson, options, buildState);
+
+      expect(buildState.hasEntryPointsChanges).toBeTrue();
+      expect(buildState.previousBundleResults.has('secondary')).toBeFalse();
+      expect(buildState.previousBundleResults.has('.')).toBeFalse();
+      expect(buildState.previousBundleResults.has('tertiary')).toBeFalse();
+      expect(buildState.previousBundleResults.has('unrelated')).toBeTrue();
+    });
+
     it('should throw when updated packageJson is missing a name field', () => {
       const options = {
         entryPoints: new Map(),

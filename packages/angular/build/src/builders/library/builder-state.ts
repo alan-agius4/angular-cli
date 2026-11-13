@@ -132,7 +132,6 @@ export class BuilderState {
    */
   resetExecutionResult(): ExecutionResult {
     this.#executionResult = new ExecutionResult();
-    this.#hasUpdatedBundles = false;
 
     return this.#executionResult;
   }

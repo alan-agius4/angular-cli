@@ -261,6 +261,67 @@ describe('BuilderState', () => {
       );
     });
 
+    it('should queue orphaned shared split chunks for deletion when a secondary entry point is removed and primary is rebundled', () => {
+      const state = new BuilderState();
+
+      state.recordBundleOutput(
+        new Map([
+          [
+            '.',
+            {
+              esmModuleIds: new Set(['/src/index.js', '/src/shared.js']),
+              dtsModuleIds: new Set(['/src/index.d.ts', '/src/shared.d.ts']),
+              esmOutputFiles: new Set(['fesm2022/my-lib.mjs', 'fesm2022/shared-abc.mjs']),
+              dtsOutputFiles: new Set(['types/my-lib.d.ts', 'types/shared-def.d.ts']),
+              hasTslibImport: false,
+            },
+          ],
+          [
+            'secondary',
+            {
+              esmModuleIds: new Set(['/secondary/index.js', '/src/shared.js']),
+              dtsModuleIds: new Set(['/secondary/index.d.ts', '/src/shared.d.ts']),
+              esmOutputFiles: new Set(['fesm2022/my-lib-secondary.mjs', 'fesm2022/shared-abc.mjs']),
+              dtsOutputFiles: new Set(['types/my-lib-secondary.d.ts', 'types/shared-def.d.ts']),
+              hasTslibImport: false,
+            },
+          ],
+        ]),
+      );
+      state.recordEmittedOutputs({ filesToEmit: [], filesToDelete: [] });
+
+      // Remove secondary entry point and rebundle primary with shared module inlined
+      state.resetExecutionResult();
+      state.previousBundleResults.delete('secondary');
+      state.previousBundleResults.delete('.');
+      state.hasEntryPointsChanges = true;
+
+      state.recordBundleOutput(
+        new Map([
+          [
+            '.',
+            {
+              esmModuleIds: new Set(['/src/index.js', '/src/shared.js']),
+              dtsModuleIds: new Set(['/src/index.d.ts', '/src/shared.d.ts']),
+              esmOutputFiles: new Set(['fesm2022/my-lib.mjs']),
+              dtsOutputFiles: new Set(['types/my-lib.d.ts']),
+              hasTslibImport: false,
+            },
+          ],
+        ]),
+      );
+
+      const filesToDelete = state.recordEmittedOutputs({ filesToEmit: [], filesToDelete: [] });
+      expect(filesToDelete).toEqual(
+        new Set([
+          'fesm2022/my-lib-secondary.mjs',
+          'fesm2022/shared-abc.mjs',
+          'types/my-lib-secondary.d.ts',
+          'types/shared-def.d.ts',
+        ]),
+      );
+    });
+
     it('should evict overridden asset sources and not delete an output path when a fallback source is re-emitted', async () => {
       const state = new BuilderState();
 

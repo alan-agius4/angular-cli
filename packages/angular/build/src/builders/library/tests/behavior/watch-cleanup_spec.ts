@@ -115,6 +115,79 @@ describeLibraryBuilder(executeLibraryBuilder, LIBRARY_BUILDER_INFO, (harness) =>
       ]);
     });
 
+    it('should rebundle remaining entry points and clean up orphaned shared chunks when a secondary entry point is removed in watch mode', async () => {
+      await harness.writeFiles({
+        'projects/lib/src/shared.ts': `export interface SharedData { value: string; }\nexport const SHARED_INTERNAL = { value: 'shared-internal-value' };\n`,
+        'projects/lib/src/public-api.ts': `export * from './lib/lib.service';\nimport { SHARED_INTERNAL, type SharedData } from './shared';\nexport const primaryShared: SharedData = SHARED_INTERNAL;\n`,
+        'projects/lib/secondary/src/public-api.ts': `import { SHARED_INTERNAL, type SharedData } from '../../src/shared';\nexport const secondaryShared: SharedData = SHARED_INTERNAL;\n`,
+      });
+
+      await harness.modifyFile('projects/lib/package.json', (content) => {
+        const pkg = JSON.parse(content);
+        pkg.exports = {
+          '.': './src/public-api.ts',
+          './secondary': './secondary/src/public-api.ts',
+        };
+
+        return JSON.stringify(pkg, null, 2);
+      });
+
+      harness.useTarget('build', {
+        ...BASE_OPTIONS,
+        declarationMap: true,
+        watch: true,
+      });
+
+      let sharedMjsChunk = '';
+      let sharedDtsChunk = '';
+
+      await harness.executeWithCases([
+        async ({ result }) => {
+          expect(result?.success).toBeTrue();
+
+          const primaryMjs = harness.readFile('dist/lib/fesm2022/lib.mjs');
+          const mjsMatch = primaryMjs.match(/\bfrom\s+["']\.\/(shared-[^"']+\.mjs)["']/);
+          expect(mjsMatch).not.toBeNull();
+          sharedMjsChunk = mjsMatch?.[1] ?? '';
+          expect(harness.hasFile(`dist/lib/fesm2022/${sharedMjsChunk}`)).toBeTrue();
+          expect(harness.hasFile(`dist/lib/fesm2022/${sharedMjsChunk}.map`)).toBeTrue();
+
+          const primaryDts = harness.readFile('dist/lib/types/lib.d.ts');
+          const dtsMatch = primaryDts.match(/\bfrom\s+["']\.\/(shared-[^"'.]+)(?:\.[^"']+)?["']/);
+          expect(dtsMatch).not.toBeNull();
+          sharedDtsChunk = dtsMatch ? `${dtsMatch[1]}.d.ts` : '';
+          expect(harness.hasFile(`dist/lib/types/${sharedDtsChunk}`)).toBeTrue();
+          expect(harness.hasFile(`dist/lib/types/${sharedDtsChunk}.map`)).toBeTrue();
+
+          // Remove the secondary entry point from package.json exports without touching any .ts files
+          await harness.modifyFile('projects/lib/package.json', (content) => {
+            const pkg = JSON.parse(content);
+            pkg.exports = {
+              '.': './src/public-api.ts',
+            };
+
+            return JSON.stringify(pkg, null, 2);
+          });
+        },
+        ({ result }) => {
+          expect(result?.success).toBeTrue();
+          expect(harness.hasFile('dist/lib/fesm2022/lib-secondary.mjs')).toBeFalse();
+          expect(harness.hasFile(`dist/lib/fesm2022/${sharedMjsChunk}`)).toBeFalse();
+          expect(harness.hasFile(`dist/lib/fesm2022/${sharedMjsChunk}.map`)).toBeFalse();
+          expect(harness.hasFile(`dist/lib/types/${sharedDtsChunk}`)).toBeFalse();
+          expect(harness.hasFile(`dist/lib/types/${sharedDtsChunk}.map`)).toBeFalse();
+
+          const primaryMjs = harness.readFile('dist/lib/fesm2022/lib.mjs');
+          expect(primaryMjs).toContain('shared-internal-value');
+          expect(primaryMjs).not.toContain(sharedMjsChunk);
+
+          const primaryDts = harness.readFile('dist/lib/types/lib.d.ts');
+          expect(primaryDts).toContain('SharedData');
+          expect(primaryDts).not.toContain(sharedDtsChunk);
+        },
+      ]);
+    });
+
     it('should prune removed nested secondary entry point files and update .npmignore in watch mode', async () => {
       await harness.writeFiles({
         'projects/lib/shared/src/public-api.ts': `export const SHARED = 'shared';\n`,

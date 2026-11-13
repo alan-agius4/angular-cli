@@ -39,13 +39,18 @@ export async function generatePackageManifests(
     version,
     exports: userExports,
     workspaces: _workspaces,
+    ngPackage: _ngPackage,
     ...restPackageJson
   } = rawPackageJson;
 
+  let initialExports: Record<string, unknown> = {};
+  if (typeof userExports === 'object' && userExports !== null && !Array.isArray(userExports)) {
+    const hasSubpathKeys = Object.keys(userExports).some((k) => k.startsWith('.'));
+    initialExports = hasSubpathKeys ? userExports : { '.': userExports };
+  }
+
   const exportsMap: Record<string, unknown> = {
-    ...(typeof userExports === 'object' && userExports !== null && !Array.isArray(userExports)
-      ? userExports
-      : {}),
+    ...initialExports,
     './package.json': { default: './package.json' },
   };
 
@@ -77,7 +82,11 @@ export async function generatePackageManifests(
     version: isWatchMode ? `0.0.0-watch+${Date.now()}` : version,
   };
 
-  if (hasTslibImport && !rawPackageJson.dependencies?.['tslib']) {
+  if (
+    hasTslibImport &&
+    !rawPackageJson.dependencies?.['tslib'] &&
+    !rawPackageJson.peerDependencies?.['tslib']
+  ) {
     distPackageJson.dependencies = {
       ...rawPackageJson.dependencies,
       tslib: await getAngularTslibRange(options.workspaceRoot),

@@ -9,7 +9,12 @@
 import path from 'node:path';
 import { isSubDirectory, toPosixPath } from '../../../utils/path';
 import type { BuilderState } from '../builder-state';
-import type { NormalizedEntryPoint, NormalizedLibraryOptions, PackageJsonData } from '../types';
+import type {
+  BundleResult,
+  NormalizedEntryPoint,
+  NormalizedLibraryOptions,
+  PackageJsonData,
+} from '../types';
 import type { BundleEntryPointInput } from './bundler';
 
 /**
@@ -267,7 +272,8 @@ export function updateWatchedEntryPoints(
       watchedCompilationFiles.add(entryPoint.entryFilePath);
     }
 
-    for (const name of previousBundleResults.keys()) {
+    const invalidatedBundles: BundleResult[] = [];
+    for (const [name, bundleResult] of previousBundleResults) {
       const oldEp = options.entryPoints.get(name);
       const newEp = newEntryPoints.get(name);
       if (
@@ -277,6 +283,19 @@ export function updateWatchedEntryPoints(
         newEp.bundleName !== oldEp.bundleName
       ) {
         previousBundleResults.delete(name);
+        invalidatedBundles.push(bundleResult);
+      }
+    }
+
+    for (const invalidated of invalidatedBundles) {
+      for (const [name, candidate] of previousBundleResults) {
+        if (
+          !invalidated.esmModuleIds.isDisjointFrom(candidate.esmModuleIds) ||
+          !invalidated.dtsModuleIds.isDisjointFrom(candidate.dtsModuleIds)
+        ) {
+          previousBundleResults.delete(name);
+          invalidatedBundles.push(candidate);
+        }
       }
     }
 
